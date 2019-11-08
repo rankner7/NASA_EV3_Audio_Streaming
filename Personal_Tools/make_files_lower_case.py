@@ -6,11 +6,11 @@ pwd_out = True
 
 if file_location == "here":
 
-	pwd_out_file = "/home/pi/pwd_out.txt"
+	pwd_out_file = "/home/ronnie/pwd_out.txt"
 	cmd = "pwd > " + pwd_out_file
 	os.system(cmd)
 
-	ls_out_file = "/home/pi/ls_out.txt"
+	ls_out_file = "/home/ronnie/ls_out.txt"
 	cmd = "ls > " + ls_out_file
 	os.system(cmd)
 
@@ -25,7 +25,7 @@ else:
 	pwd = file_location
 	pwd_out = False
 	
-	ls_out_file = "/home/pi/ls_out.txt"
+	ls_out_file = "/home/ronnie/ls_out.txt"
 	cmd = "ls " + pwd + " > " + ls_out_file
 	os.system(cmd)
 	
