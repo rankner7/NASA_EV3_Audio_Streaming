@@ -1,0 +1,57 @@
+Installing Gstreamer on Raspberry Pi:
+ - sudo apt-get install gstreamer1.0-tools
+
+Getting Raspberry pi to play audio:
+To auto select source:
+	amixer cset numid=3 0
+To play over jack:
+	amixer cset numid=3 1
+To play over HDMI:
+	amixer cset numid=3 2
+
+Test installation of Gstreamer and configuration of Gstreamer with:
+	gst-launch-1.0 audiotestsrc ! audioconvert ! audioresample ! alsasink
+You should hear a constant tone sine wave
+If you do not hear anything, try replacing alsasink with autoaudiosink. This method will attempt to automatically recognize the sound card for your device
+
+Installing SIP SIMPLE
+ - download most recent tar version from http://download.ag-projects.com/SipClient/
+ - download all packages from http://download.ag-projects.com/SipClient/Raspberry/
+	- follow install instructions on README
+ - ensure all dependencies are installed
+	- python 2.7
+	- python-application >=2.5.0
+	- python-backports >=1.0.0
+	- python-cjson >= 1.0.5
+	- python-dateutil >= 1.4
+	- python-eventlib >= 0.1.1
+	- python-greenlet = 0.4.0
+	- python-gnutils >=1.1.9
+	- python-lxml >=2.1.2
+	- python-msrplib >= 0.19.0
+	- python-xcaplib >=1.0.17
+	- cython >= 0.13.0
+	- dnspython >=1.9.0
+	- twisted >=8.1.0
+	- zope-interface >=3.3.1
+ - within python-sipsimpleX.X.X folder, run
+	- ./setup.py install
+	- make sure it installs properly. If it fails due to missing packages, install them
+	- I needed to install:
+		- ffmpeg: sudo apt-get install ffmpeg
+		- libavformat: sudo apt-get install libavformat-dev
+		- libswscale: sudo apt-get install libswscale-dev
+		- libvpx: sudo apt-get install libvpx-dev
+		- openssl: look up online and follow directions (semi-complicated)
+ - to check for dependencies:
+	- type "{Package Name} --version" into the terminal
+	- check installed packages with "dpkg -l | grep 'ii {first letter or two of package}' " in terminal
+
+
+failed with sudo pip install:
+ - backports
+ - eventlib
+ - greenlet
+ - lmxl
+
+
