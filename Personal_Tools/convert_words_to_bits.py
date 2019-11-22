@@ -20,7 +20,7 @@ def convert_bit_list_to_bytearr(bit_list):
 	
 #Get input file to convert
 input_file = input("Enter the FULL FILE PATH for the file to be converted:\n")
-input_file = '/home/ronnie/NASA_EV3_Audio_Streaming/ITU_G729_Source_Code/g729/test_vectors/speech.bit'
+#input_file = '/home/ronnie/NASA_EV3_Audio_Streaming/ITU_G729_Source_Code/g729/test_vectors/speech.bit'
 infile_handle = open(input_file, 'rb')
 
 #Output File creation
@@ -45,8 +45,10 @@ packets = input_bytes.split(code_word)
 print("Input File:  %d Bytes"%(len(input_bytes)))
 
 output_size = 0
+packet_cnt = 0
 for packet in packets:
 	if packet:
+		packet_cnt += 1
 		bin_list = []
 		if len(packet) == sample_index*80:
 			for samp in range(0, 80):
@@ -56,7 +58,7 @@ for packet in packets:
 				elif sample == zero:
 					bin_list.append(0)
 				else:
-					print("UNRECOGNIZED VALUE")
+					print("UNRECOGNIZED VALUE: ", sample, " | Packet #%d, Sample #%d"%(packet_cnt, samp+1))
 		bites = convert_bit_list_to_bytearr(bin_list)
 		output_size += len(bites)
 		outfile_handle.write(bites)
