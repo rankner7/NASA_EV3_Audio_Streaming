@@ -52,11 +52,11 @@ def print_difference(byte_str1, byte_str2):
 	
 
 
-#file1 = input("Enter full file path of the first file:\n")
-#file2 = input("Enter full file path of the second file:\n")
+file1 = input("Enter full file path of the first file:\n")
+file2 = input("Enter full file path of the second file:\n")
 
-file2 = '/home/ronnie/NASA_EV3_Audio_Streaming/Test_Files/Words2bits/p501_E_8kHz_16bit_ITU_enc_2bits.bit'
-file1 = '/home/ronnie/NASA_EV3_Audio_Streaming/Test_Files/Encoded/p501_E_8kHz_16bit_enc.bit'
+#file2 = '/home/ronnie/NASA_EV3_Audio_Streaming/Test_Files/Words2bits/p501_E_8kHz_16bit_ITU_enc_2bits.bit'
+#file1 = '/home/ronnie/NASA_EV3_Audio_Streaming/Test_Files/Encoded/p501_E_8kHz_16bit_enc.bit'
 
 path1_names = file1.split("/")
 path2_names = file2.split("/")
