@@ -14,15 +14,15 @@ Make sure to set $STREAM_CAPS to proper capabilities with:
 
 `export STREAM_CAPS="application/x-rtp,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-params=(int)2,encoding-name=(string)OPUS"`
 
-**Play Audio**
+*Play Audio*
 
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink`
 
-**Show Waveform**
+*Show Waveform*
 
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpopusdepay ! opusdec ! queue ! wavescope ! videoconvert ! video/x-raw,width=800,height=400 ! autovideosink`
 
-**Play Audio and Waveform simultaneously**
+*Play Audio and Waveform simultaneously*
 
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpopusdepay ! opusdec ! tee name=t ! queue ! audioconvert ! autoaudiosink t. ! queue ! wavescope ! videoconvert ! autovideosink`
 
