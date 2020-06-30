@@ -51,3 +51,26 @@ export STREAM_CAPS="application/x-rtp,media=(string)audio,payload=(int)96,clock-
 
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpg726depay ! avdec_g726 ! audioconvert ! autoaudiosink`
 
+## G726 Codec Via File
+
+Make sure to set $RAW\_FILE, $ENCODED\_FILE, and $DECODED\_FILE environment variables to the proper files.
+
+For example:
+```shell
+export RAW\_FILE = test.raw
+export ENCODED\_FILE = test\_enc\_g726.gdp
+export DECODED\_FILE = test\_dec\_g726.raw
+```
+
+To record a test file, you can use your computers microphone via the following command:
+
+`gst-launch-1.0 autoaudiosrc ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! filesink location=RAW_FILE`
+
+### Encoding and Recording Raw File
+
+`gst-launch-1.0 filesrc location=$RAW_FILE ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! avenc_g726 bitrate=8000 ! gdppay ! filesink location=$ENCODED_FILE`
+
+### Decoding and Recording Encoded File
+
+`gst-launch-1.0 filesrc location=$ENCODED_FILE ! gdpdepay ! avdec_g726 ! filesink location=$DECODED_FILE`
+
