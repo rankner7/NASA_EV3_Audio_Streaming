@@ -57,9 +57,9 @@ Make sure to set $RAW\_FILE, $ENCODED\_FILE, and $DECODED\_FILE environment vari
 
 For example:
 ```shell
-export RAW\_FILE = test.raw
-export ENCODED\_FILE = test\_enc\_g726.gdp
-export DECODED\_FILE = test\_dec\_g726.raw
+export RAW_FILE = test.raw
+export ENCODED_FILE = test_enc_g726.gdp
+export DECODED_FILE = test_dec_g726.raw
 ```
 
 To record a test file, you can use your computers microphone via the following command:
