@@ -8,7 +8,7 @@ For internal data transfer: `export RECEIVER_IP=127.0.0.1`
 
 `gst-launch-1.0 -v autoaudiosrc ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! opusenc bitrate=8000 ! rtpopuspay ! udpsink host=$RECEIVER_IP port=5000`
 
-### Reciever
+### Receiver
 
 Make sure to set $STREAM_CAPS to proper capabilities with:
 
@@ -25,4 +25,8 @@ Make sure to set $STREAM_CAPS to proper capabilities with:
 **Play Audio and Waveform simultaneously**
 
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpopusdepay ! opusdec ! tee name=t ! queue ! audioconvert ! autoaudiosink t. ! queue ! wavescope ! videoconvert ! autovideosink`
+
+## G726 Codec and RTP over UDP
+### Sender
+### Receiver
 
