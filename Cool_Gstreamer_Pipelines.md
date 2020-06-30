@@ -10,9 +10,8 @@ export RECEIVER_IP=127.0.0.1
 ```
 
 *Send Audio*
-```shell
-gst-launch-1.0 -v autoaudiosrc ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! opusenc bitrate=8000 ! rtpopuspay ! udpsink host=$RECEIVER_IP port=5000
-```
+
+`gst-launch-1.0 -v autoaudiosrc ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! opusenc bitrate=8000 ! rtpopuspay ! udpsink host=$RECEIVER_IP port=5000`
 
 ### Receiver
 
@@ -44,7 +43,9 @@ export STREAM_CAPS="application/x-rtp,media=(string)audio,payload=(int)96,clock-
 
 Make sure to set $STREAM_CAPS to proper capabilities with:
 
-`export STREAM_CAPS="application/x-rtp,media=(string)audio,payload=(int)96,clock-rate=(int)8000,encoding-name=(string)G726-16"`
+```shell
+export STREAM_CAPS="application/x-rtp,media=(string)audio,payload=(int)96,clock-rate=(int)8000,encoding-name=(string)G726-16"
+```
 
 *Play Audio*
 
