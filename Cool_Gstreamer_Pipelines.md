@@ -4,7 +4,10 @@
 ### Sender
 Make sure to set $RECEIVER_IP environment variable to the receiving device's IP address
 
-For internal data transfer: ```shell export RECEIVER_IP=127.0.0.1```
+For internal data transfer: 
+```shell
+export RECEIVER_IP=127.0.0.1
+```
 
 `gst-launch-1.0 -v autoaudiosrc ! audio/x-raw,format=S16LE,channels=1,rate=8000 ! opusenc bitrate=8000 ! rtpopuspay ! udpsink host=$RECEIVER_IP port=5000`
 
