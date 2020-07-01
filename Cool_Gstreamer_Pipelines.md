@@ -74,3 +74,7 @@ To record a test file, you can use your computers microphone via the following c
 
 `gst-launch-1.0 filesrc location=$ENCODED_FILE ! gdpdepay ! avdec_g726 ! filesink location=$DECODED_FILE`
 
+## Dad to Me Hearing Display (also live FFT diagram!)
+
+`gst-launch-1.0 autoaudiosrc ! tee name=t ! queue ! audioconvert ! audiowsinclimit cutoff=500 length=80 ! audioconvert ! spectrascope ! videoconvert ! video/x-raw,width=900,height=400 ! autovideosink t. ! queue ! audioconvert ! spectrascope ! videoconvert ! video/x-raw,width=900,height=400 ! autovideosink`
+
