@@ -11,7 +11,8 @@ For internal data transfer:
 export RECEIVER_IP=127.0.0.1
 ```
 
-*Send Audio with AntiAliasing (I believe handled in audioresample)*
+*Send Audio with Anti-aliasing (I believe handled in audioresample)*
+
 `gst-launch-1.0 -v autoaudiosrc ! audio/x-raw,rate=44100,format=F32LE,channels=1 ! audioconvert ! audio/x-raw,format=S16LE,channels=1 ! audioresample ! audio/x-raw,rate=8000 ! g729enc ! rtpg729pay ! udpsink host=$RECEIVER_IP port=5000`
 
 ### Reciever
@@ -22,7 +23,8 @@ Make sure to set $STREAM_CAPS to proper capabilities with:
 export STREAM_CAPS="application/x-rtp,media=(string)audio,clock-rate=(int)8000,encoding-name=(string)G729"
 ```
 
-*Receive Audio and Display FFT
+*Receive Audio and Display FFT*
+
 `gst-launch-1.0 udpsrc port=5000 caps=$STREAM_CAPS ! rtpg729depay ! g729dec ! tee name=t ! queue ! audioconvert ! autoaudiosink t. ! queue ! audioconvert ! audio/x-raw,format=S16LE,channels=2,rate=8000 ! spectrascope ! videoconvert ! video/x-raw,height=400,width=900 ! autovideosink`
 
 ## Opus Codec and RTP over UDP
