@@ -176,10 +176,20 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 		if (!(ack == -1)){
 			//Provided ACK is not -1, leave loop
 			puts("\tConnection Status Established! Leaving");
-			return;
+			break;
 		}
 
 	}
+	sprintf(print_str, "Managing Connection to Socket %d", new_socket);
+	puts(print_str);
+
+	int read_size;
+	char nom_read[200];
+	while ( (read_size = read(new_socket, nom_read , sizeof(nom_read))) > 0){
+		sprintf(print_str, "%d", read_size);
+	} //spins until disconnect
+	sprintf(print_str, "CONNECTION TO SOCKET %d CLOSED, shutting down pipelines that were set up", new_socket);
+	puts(print_str);
 	
 }
 	
