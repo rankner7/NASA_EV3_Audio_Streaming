@@ -36,8 +36,8 @@ In **one** terminal:
 `gst-launch-1.0 audiotestsrc freq=262 ! audio/x-raw,rate=16000,format=S16LE,channels=1 ! audiomixer name=mix ! audioconvert ! autoaudiosink audiotestsrc freq=327 ! audio/x-raw,rate=16000,format=S16LE,channels=1 ! mix. audiotestsrc freq=393 ! audio/x-raw,rate=16000,format=S16LE,channels=1 ! mix. audiotestsrc freq=524 ! audio/x-raw,rate=16000,format=S16LE,channels=1 ! mix.`
 
 
-### Results
-#### 2 Streams (C and E --> 262 Hz and 327.5 Hz respectively)
+## Results
+### 2 Streams (C and E --> 262 Hz and 327.5 Hz respectively)
 *Multiple Threads*
 
 ![2 Stream Multiple Threads](2_no_mix.png)
@@ -46,7 +46,7 @@ In **one** terminal:
 
 ![2 Stream Audiomixing](2_mix.png)
 
-#### 3 Streams (C, E, and G --> 262, 327.5, and 393 Hz respectively)
+### 3 Streams (C, E, and G --> 262, 327.5, and 393 Hz respectively)
 *Multiple Threads*
 
 ![3 Stream Multiple Threads](3_no_mix.png)
@@ -55,7 +55,7 @@ In **one** terminal:
 
 ![3 Stream Audiomixing](3_mix.png)
 
-#### 4 Streams (C, E, G, and High C --> 262, 327.5, 393 and 524 Hz respectively)
+### 4 Streams (C, E, G, and High C --> 262, 327.5, 393 and 524 Hz respectively)
 *Multiple Threads*
 
 ![4 Stream Multiple Threads](4_no_mix.png)
@@ -63,5 +63,13 @@ In **one** terminal:
 *Audio Mixer*
 
 ![4 Stream Audiomixing](4_mix.png)
+
+## Conclusions
+1. It's hard to tell which is better --> both seem to handle 4 streams pretty easily. 
+  * Audibly, they are almost identical. With 4 streams, audio mixing seemed to have a little more high frequency information, but that is a purely qualitative observation from an ear that is often out of tune
+  * Visually, the FFTs are nearly identical for 2 and 3 streams. There are slight differences between the 4 stream FFTs, but no mutliplexing noise seemed to be introduced by threaded version
+2. Audio system is either internally mixing output from separate threads or operating fast enough where mulitplexing between streams does not impact audio quality, as mixing and threading seems to display the same performance.
+  * Risk: If extra operations are being performed by the device used for testing, performance of each technique may be significantly different on different/less complex devices
+  * Impact: multiple threads is an easier architecture, but may suffer in performance depending on device --> more testing needed to determine this
 
 
