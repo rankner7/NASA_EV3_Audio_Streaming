@@ -58,10 +58,10 @@ In **one** terminal:
 #### 4 Streams (C, E, G, and High C --> 262, 327.5, 393 and 524 Hz respectively)
 *Multiple Threads*
 
-![4 Stream Multiple Threads](2_no_mix.png)
+![4 Stream Multiple Threads](4_no_mix.png)
 
 *Audio Mixer*
 
-![4 Stream Audiomixing](2_mix.png)
+![4 Stream Audiomixing](4_mix.png)
 
 
