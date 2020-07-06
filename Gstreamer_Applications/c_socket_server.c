@@ -5,7 +5,8 @@
 #include<arpa/inet.h>	//inet_addr
 #include<unistd.h>	//write
 
-#define MAX_STREAMS 10
+#define MAX_STREAMS 10 //Max number of ports to be recieving
+#define MAX_RETRY 3 //Max times to retry with a 
 #define STREAM 1 // 01
 #define LISTEN 2 // 10
 
@@ -15,7 +16,7 @@ int connection_cnt = 0;
 
 //Initialize random kernel
 //time_t t;
-//srand((unsigned) time(&t));
+//srand((unsigned) time(&t) );
 
 void print_strs(char *target, char **str_arr){
 	
@@ -45,7 +46,7 @@ void print_new_connection(struct sockaddr_in client, int new_socket){
 	
 	char int_str[10];
 	sprintf(int_str, "%d", client_port);
-	combine[0]="Connection Accepted from ";combine[1]=client_ip;combine[2]=":";combine[3]=int_str;combine[4]=NULL;
+	combine[0]="\nConnection Accepted from ";combine[1]=client_ip;combine[2]=":";combine[3]=int_str;combine[4]=NULL;
 	print_strs(target_str, combine);
 
 	
@@ -62,7 +63,7 @@ int assign_stream_port(int desired_port){
 		for(int i = 0; i < connection_cnt; i++){
 			if (desired_port == stream_ports[i]){
 				//if port is already listed, break and set listed to true
-				puts("PORT ALready Taken!");
+				puts("\t\tPORT ALready Taken!");
 				port_listed = 1;
 				break;
 			}
@@ -70,7 +71,7 @@ int assign_stream_port(int desired_port){
 		if (port_listed){
 			//if listed, generate a new random port and repeat process to see if listed
 			//loop only breaks if port is not listed
-			desired_port = rand()%65535;
+			desired_port = rand()%65534 + 1; //Need to make sure 0 is not a returned port
 		}
 	}
 
@@ -84,8 +85,8 @@ int assign_stream_port(int desired_port){
 	}
 	else{
 		//If connection_cnt = (MAX-1), return -1 because cannot connect
-		puts("CANNOT CONNECT: MAX CONNECTED ALREADY");
-		return -1;
+		puts("WARN: CANNOT CONNECT: MAX CONNECTED ALREADY");
+		return -2;
 	}
 
 }
@@ -98,7 +99,6 @@ int extract_packet_value(char *packet, int val_ind){
 		//Search for first occurance of delim, increase pointer by one and repeat
 		temp_str = strchr(temp_str, delim);
 		if (temp_str == NULL){
-			puts("BAD PACKET!!!!");
 			good_packet = 0;
 			break;
 		}
@@ -130,51 +130,95 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 		 - Need to verfiy this port is available, and if not send back a proposed port
 	Setup String Format*/
 
-	//TODO Put this all in a loop to account for bad requests
-	char setup[500] = {'\0'};
-	int ack, mode, listen_port, stream_port;
-	
-	print_new_connection(client, new_socket);
-	
-	if( recv(new_socket, setup , 2000 , 0) < 0)
-	{
-		puts("recv failed");
-	}
-	
-	mode = extract_packet_value(setup,1);
-	listen_port = extract_packet_value(setup,2);
-	stream_port = extract_packet_value(setup,3);
+	/*ACK CODE
+		 - -2 -> Max Connections reached
+		 - -1 -> Bad Request Packet
+		 -  0 -> All Good
+		 -  1-65535 -> Changed Port
+	ACK CODE*/
 
-	if ((mode == -1) || (listen_port == -1) || (stream_port == -1)){
-		//BAD packet. Tell requesting client to try again
-		puts("COULD NOT PARSE PACKET -> BAD FORMAT");
-		//TODO add accountability for invalid mode or ports
-	}
-	else{
-		int ack = 0;
-		//Packet Was Good
-		if (!(mode & LISTEN)){
-			//Listen Mode requested
-			//TODO Set Up GSTREAMER G729_SEND code to client IP and listen_port
+	print_new_connection(client, new_socket);
+
+	for (int retry = 0; retry < MAX_RETRY; retry++){
+		char setup[500] = {'\0'};
+		int ack, mode, listen_port, stream_port;
+		
+		if( recv(new_socket, setup , 2000 , 0) < 0)
+		{
+			puts("recv failed");
 		}
-		if (!(mode & STREAM)){
-			//Stream Mode Requested
-			int assigned_port;
-			assigned_port = assign_stream_port(stream_port);
-			if (!(assigned_port == stream_port)){
-				//Desired port did not work
-				//Send reply with port that was chosen
-				ack = assigned_port;
+		
+		mode = extract_packet_value(setup,1);
+		listen_port = extract_packet_value(setup,2);
+		stream_port = extract_packet_value(setup,3);
+
+		if ((mode == -1) || (mode > 4) || (listen_port == -1) || (listen_port > 65535) || (stream_port == -1) || (stream_port > 65535)){
+			//BAD packet. Tell requesting client to try again
+			puts("WARN: COULD NOT PARSE -> BAD PACKET or Improper values");
+			//TODO add accountability for invalid mode or ports
+			ack = -1;
+		}
+		else{
+			ack = 0;
+			//Packet Was Good
+			if (!(mode & LISTEN)){
+				//Listen Mode requested (Requesting Client would like to listen to your audio)
+				//TODO Set Up GSTREAMER G729_SEND code to client IP and listen_port
+				char *client_ip = inet_ntoa(client.sin_addr);
+				int client_port = listen_port;
+				char target_str[250] = {'\0'};
+				char *combine[10]; //Printing with puts dynamically
+				char int_str[10];
+				sprintf(int_str, "%d", client_port);
+				combine[0]="\tLISTEN MODE: Setting up G729 SEND to  ";combine[1]=client_ip;combine[2]=":";combine[3]=int_str;combine[4]=NULL;
+				print_strs(target_str, combine);
+				
 			}
-			//TODO Set Up GSTREAMER G729_RECV code for assigned Port
+			if (!(mode & STREAM)){
+				//Stream Mode Requested (Requesting Client would like to stream their audio to you)
+				int assigned_port;
+				assigned_port = assign_stream_port(stream_port);
+				if (!(assigned_port == stream_port)){
+					//Desired port did not work
+					//Send reply with port that was chosen
+					ack = assigned_port;
+					puts("\t\tAssigned port was different from desired port");
+				}
+				if (assigned_port > 0){
+					//TODO Set Up GSTREAMER G729_RECV code for assigned Port
+					char target_str[250] = {'\0'};
+					char *combine[10]; //Printing with puts dynamically
+					char int_str[10];
+					sprintf(int_str, "%d", assigned_port);
+					combine[0]="\tSTREAM MODE: Setting up G729 RECV for Port ";combine[1]=int_str;combine[2]=NULL;
+					print_strs(target_str, combine);
+				}
+			}
+			//Send Back acknowledgement
+			//If all good, send 0
+			//If alteration to streaming from requesting client, send back adjusted port
 		}
-		//Send Back acknowledgement
-		//If all good, send 0
-		//If alteration to streaming from requesting client, send back adjusted port
+
 		char ack_msg[10];
-		sprintf(ack_msg, "%d", ack);
-		write(new_socket , ack_msg , strlen(ack_msg));
+		if (retry == (MAX_RETRY - 1)){
+			//Send -2 if connection failed more than 3 times
+			sprintf(ack_msg, "%d", -2);
+			write(new_socket , ack_msg , strlen(ack_msg));
+			puts("\tERROR: Unable to Connect! Leaving");
+		}
+		else{
+			sprintf(ack_msg, "%d", ack);
+			write(new_socket , ack_msg , strlen(ack_msg));
+		}
+		
+		if (!(ack == -1)){
+			//Provided ACK is not -1, leave loop
+			puts("\tConnection Established! Leaving");
+			return;
+		}
+
 	}
+	
 }
 	
 
@@ -213,10 +257,7 @@ int main(int argc , char *argv[]){
 	c = sizeof(struct sockaddr_in);
 	//connection_cnt=0;
 	while( (new_socket = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) ){
-		print_new_connection(client, new_socket);
-		//Reply to the client
-		message = "Hello Client , I have received your connection!\n";
-		write(new_socket , message , strlen(message));
+		handle_new_connection(client, new_socket);
 		
 	}
 	if (new_socket<0)
