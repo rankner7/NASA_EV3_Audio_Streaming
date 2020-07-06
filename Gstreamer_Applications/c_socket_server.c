@@ -4,56 +4,17 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>	//inet_addr
 #include<unistd.h>	//write
+#include<time.h>
 
 #define MAX_STREAMS 10 //Max number of ports to be recieving
 #define MAX_RETRY 3 //Max times to retry with a 
-#define STREAM 1 // 01
-#define LISTEN 2 // 10
+#define LISTEN 1 // 01
+#define STREAM 2 // 10
+#define REQUEST_PORT 4000
 
 //GLOBAL VARIABLES
 int stream_ports[MAX_STREAMS];
 int connection_cnt = 0;
-
-//Initialize random kernel
-//time_t t;
-//srand((unsigned) time(&t) );
-
-void print_strs(char *target, char **str_arr){
-	
-	/***** Example Use ***********/
-	//combines[0] = "hey "; combines[1] = "it "; combines[2] = "worked!!!";combines[3] = NULL; 
-	//print_strs(target_str, combines);
-
-	char *current_str = str_arr[0];
-	int cnt = 0;
-	while (current_str != NULL){
-		strcat(target, current_str);
-		cnt++;
-		current_str = str_arr[cnt];
-	}
-	puts(target);
-	
-	//Clean up
-	target[0] = '\0';
-	str_arr[0] = NULL;
-}
-
-void print_new_connection(struct sockaddr_in client, int new_socket){
-	char *client_ip = inet_ntoa(client.sin_addr);
-	int client_port = ntohs(client.sin_port);
-	char target_str[250] = {'\0'};
-	char *combine[10]; //Printing with puts dynamically
-	
-	char int_str[10];
-	sprintf(int_str, "%d", client_port);
-	combine[0]="\nConnection Accepted from ";combine[1]=client_ip;combine[2]=":";combine[3]=int_str;combine[4]=NULL;
-	print_strs(target_str, combine);
-
-	
-	sprintf(int_str, "%d", new_socket);
-	combine[0]="\tNew Socket Value: ";combine[1]=int_str;combine[2]=NULL;
-	print_strs(target_str, combine);
-}
 
 int assign_stream_port(int desired_port){
 	int port_listed = 1;
@@ -117,8 +78,8 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 	From the client requesting
 		|mode|ListenPort|StreamPort
 	Mode:
-		01: STREAM
-		10: LISTEN
+		01: LISTEN
+		10: STREAM
 		11: STREAM & LISTEN
 
 	ListenPort:
@@ -137,7 +98,16 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 		 -  1-65535 -> Changed Port
 	ACK CODE*/
 
-	print_new_connection(client, new_socket);
+
+	char *client_ip = inet_ntoa(client.sin_addr);
+	int client_port = ntohs(client.sin_port);
+	char print_str[250] = {'\0'};
+	
+	sprintf(print_str, "\nConnection Accepted from %s:%d", client_ip,client_port);
+	puts(print_str);
+
+	sprintf(print_str, "\tNew Socket Value: %d", new_socket);
+	puts(print_str);
 
 	for (int retry = 0; retry < MAX_RETRY; retry++){
 		char setup[500] = {'\0'};
@@ -151,30 +121,26 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 		mode = extract_packet_value(setup,1);
 		listen_port = extract_packet_value(setup,2);
 		stream_port = extract_packet_value(setup,3);
+		
+		sprintf(print_str, "\t\tMode: %d | Listen: %d | Stream: %d", mode, listen_port, stream_port);
+	puts(print_str);
 
-		if ((mode == -1) || (mode > 4) || (listen_port == -1) || (listen_port > 65535) || (stream_port == -1) || (stream_port > 65535)){
+		if ((mode < 1) || (mode > 4) || (listen_port == -1) || (listen_port > 65535) || (stream_port == -1) || (stream_port > 65535)){
 			//BAD packet. Tell requesting client to try again
 			puts("WARN: COULD NOT PARSE -> BAD PACKET or Improper values");
-			//TODO add accountability for invalid mode or ports
 			ack = -1;
 		}
 		else{
 			ack = 0;
 			//Packet Was Good
-			if (!(mode & LISTEN)){
+			if ((mode & LISTEN) == LISTEN){
 				//Listen Mode requested (Requesting Client would like to listen to your audio)
 				//TODO Set Up GSTREAMER G729_SEND code to client IP and listen_port
-				char *client_ip = inet_ntoa(client.sin_addr);
-				int client_port = listen_port;
-				char target_str[250] = {'\0'};
-				char *combine[10]; //Printing with puts dynamically
-				char int_str[10];
-				sprintf(int_str, "%d", client_port);
-				combine[0]="\tLISTEN MODE: Setting up G729 SEND to  ";combine[1]=client_ip;combine[2]=":";combine[3]=int_str;combine[4]=NULL;
-				print_strs(target_str, combine);
+				sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", client_ip, listen_port);
+				puts(print_str);
 				
 			}
-			if (!(mode & STREAM)){
+			if ((mode & STREAM) == STREAM){
 				//Stream Mode Requested (Requesting Client would like to stream their audio to you)
 				int assigned_port;
 				assigned_port = assign_stream_port(stream_port);
@@ -186,12 +152,8 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 				}
 				if (assigned_port > 0){
 					//TODO Set Up GSTREAMER G729_RECV code for assigned Port
-					char target_str[250] = {'\0'};
-					char *combine[10]; //Printing with puts dynamically
-					char int_str[10];
-					sprintf(int_str, "%d", assigned_port);
-					combine[0]="\tSTREAM MODE: Setting up G729 RECV for Port ";combine[1]=int_str;combine[2]=NULL;
-					print_strs(target_str, combine);
+					sprintf(print_str, "\tSTREAM MODE: Setting up G729 RECV for Port %d", assigned_port);
+					puts(print_str);
 				}
 			}
 			//Send Back acknowledgement
@@ -199,9 +161,9 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 			//If alteration to streaming from requesting client, send back adjusted port
 		}
 
-		char ack_msg[10];
-		if (retry == (MAX_RETRY - 1)){
-			//Send -2 if connection failed more than 3 times
+		char ack_msg[10] = {'\0'};
+		if ( (retry == (MAX_RETRY - 1)) && (ack == -1) ){
+			//Send -2 if connection failed MAX_RETRY times
 			sprintf(ack_msg, "%d", -2);
 			write(new_socket , ack_msg , strlen(ack_msg));
 			puts("\tERROR: Unable to Connect! Leaving");
@@ -213,7 +175,7 @@ void handle_new_connection(struct sockaddr_in client, int new_socket){
 		
 		if (!(ack == -1)){
 			//Provided ACK is not -1, leave loop
-			puts("\tConnection Established! Leaving");
+			puts("\tConnection Status Established! Leaving");
 			return;
 		}
 
@@ -228,6 +190,11 @@ int main(int argc , char *argv[]){
 	int socket_desc , new_socket , c, connection_cnt;
 	struct sockaddr_in server , client;
 	char *message;
+	time_t t;
+	
+
+	/* Intializes random number generator */
+	srand((unsigned) time(&t));
 	
 	//Create socket
 	socket_desc = socket(AF_INET , SOCK_STREAM , 0);
@@ -239,7 +206,7 @@ int main(int argc , char *argv[]){
 	//Prepare the sockaddr_in structure
 	server.sin_family = AF_INET;
 	server.sin_addr.s_addr = INADDR_ANY;
-	server.sin_port = htons( 4000 );
+	server.sin_port = htons( REQUEST_PORT );
 	
 	//Bind
 	if( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
@@ -247,7 +214,7 @@ int main(int argc , char *argv[]){
 		puts("bind failed");
 		return 1;
 	}
-	puts("bind done");
+	puts("Bind done");
 	
 	//Listen
 	listen(socket_desc , 3);
@@ -256,14 +223,14 @@ int main(int argc , char *argv[]){
 	puts("Waiting for incoming connections...");
 	c = sizeof(struct sockaddr_in);
 	//connection_cnt=0;
-	while( (new_socket = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c)) ){
-		handle_new_connection(client, new_socket);
-		
-	}
-	if (new_socket<0)
-	{
-		perror("accept failed");
-		return 1;
+	while(1){
+		new_socket = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c);
+		if (new_socket > 0){
+			handle_new_connection(client, new_socket);
+		}
+		else{
+			puts("Connection failed with new socket");
+		}
 	}
 
 	return 0;
