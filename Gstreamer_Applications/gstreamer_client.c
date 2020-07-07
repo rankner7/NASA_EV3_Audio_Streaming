@@ -11,50 +11,243 @@
 #include <gst/gst.h>
 #include <glib.h>
 
-#define MAX_STREAMS 10 //Max Number of Ports Receiving Data on (limited by device/mixing technique)
-#define MAX_LISTENS 10 //Max number of Streams sending to other clients (limited by computation power)
+#define MAX_STREAMS 2 //Max Number of OUTGOING (limited by device computational power)
+#define MAX_LISTENS 2 //Max number of INCOMING streams (limited by device/mixing technique)
 #define MAX_RETRY 5 //Max times to retry with a 
 #define LISTEN 1 // 01
 #define STREAM 2 // 10
 #define REQUEST_PORT 4000 //Standardized port for client-to-client comms
+#define HOST_POLL_PERIOD 5 //Polling period for client-server connection
 
 //GLOBAL VARIABLES
-int stream_ports[MAX_STREAMS];
 int stream_cnt = 0;
 int listen_cnt = 0;
-int sock_desc_max = 0;
 
 
 int send_port = 0;//TODO REMOVE AFTER TESTING
 int self_port = 0;//TODO REMOVE AFTER TESTING
 
 typedef struct connection_info {
-	struct sockaddr_in client;
+	struct sockaddr_in sock_info;
 	int sock_desc;
+	int in_port;
+	int out_port;
 	GstElement *pipe_recv;
 	GstElement *pipe_send;
 }Connect_Info;
 
+Connect_Info *connection_list[MAX_STREAMS + MAX_LISTENS] = {NULL};
+
 // FUNCTIONS
+void print_active_connections(){
+	char print_str[50] = {'\0'};
+
+	puts("*************** BEGIN ACTIVE CONNECTIONS **************");
+	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+		if (connection_list[i] != NULL){
+			sprintf(print_str, "  Connection #%d", i);
+			puts(print_str);
+			if (connection_list[i]->in_port > 0){
+				sprintf(print_str, "    Incoming stream to port %d", connection_list[i]->in_port);
+				puts(print_str);
+			}
+			if (connection_list[i]->out_port > 0){
+				sprintf(print_str, "    Outgoing stream to %s:%d", inet_ntoa(connection_list[i]->sock_info.sin_addr), connection_list[i]->out_port);
+				puts(print_str);
+			}
+		}
+	}
+	sprintf(print_str, "Listen Count: %d | Stream Count: %d", listen_cnt, stream_cnt);
+	puts(print_str);
+	puts("*************** END ACTIVE CONNECTIONS **************");
+}
+
+int register_new_connection(Connect_Info *new_connect){
+	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+		if (connection_list[i] == NULL){
+			//puts("Empty Spot Found");
+			connection_list[i] = new_connect;
+			return i;
+		}
+	}
+	puts("No more open spots");
+	return -1;
+}
+
+int close_connection(Connect_Info *old_connect){
+	//find which pointer it is in the list
+	char print_str[50] = {'\0'};
+
+	int list_entry = -1;
+	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+		if (old_connect == connection_list[i]){
+			list_entry = i;
+		}
+	}
+	if (list_entry == -1){
+		puts("\tUnable to locate connection pointer");
+		return 0;
+	}
+
+	sprintf(print_str, "Destroying Connection #%d", list_entry);
+	puts(print_str);
+	
+	//Adjust listen and stream cnts accordingly
+	if (old_connect->in_port > 0){
+		puts("\tDecrementing LISTEN count");
+		listen_cnt--;
+	}
+	if (old_connect->out_port > 0){
+		puts("\tDecrementing STREAM count");
+		stream_cnt--;
+	}
+	
+	
+	//set non null pipes to GST_STATE_NULL and unref
+	if (old_connect->pipe_recv != NULL){
+		puts("\tShutting down Recieve Pipeline");
+		gst_element_set_state (old_connect->pipe_recv, GST_STATE_NULL);
+		gst_object_unref (GST_OBJECT (old_connect->pipe_recv));
+	}
+
+	if (old_connect->pipe_send != NULL){
+		puts("\tShutting down Recieve Pipeline");
+		gst_element_set_state (old_connect->pipe_send, GST_STATE_NULL);
+		gst_object_unref (GST_OBJECT (old_connect->pipe_send));
+	}
+
+	//Close socket
+	puts("\tCLOSING SOCKET");
+	close(old_connect->sock_desc);
+
+	//free struct pointer
+	//free(old_connect);
+
+	//free struct pointer
+	connection_list[list_entry] = NULL;
+	
+	puts("\tEverything went according to plan!");
+
+	return 1;
+	
+}
+
+Connect_Info initialize_connect_info(struct sockaddr_in sock_inf, int socket_desc){
+	Connect_Info temp_info;
+
+	temp_info.sock_info = sock_inf;
+	temp_info.sock_desc = socket_desc;
+	temp_info.in_port = 0;
+	temp_info.out_port = 0;
+	temp_info.pipe_recv = NULL;
+	temp_info.pipe_send = NULL;
+
+	return temp_info;
+
+}
+	
+
 void cntrl_c_handle(int sig){
+	char print_str[50] = {'\0'};
 	puts("\n\nControl C caught");
-	/*
-	char print_str[30];
-	int close_res;
-	for(int i = 3; i < (sock_desc_max+1); i++){
-		close_res = close(i);
-		if (close_res == 0){
-			sprintf(print_str, "  Closed FD #%d", i);
-			puts(print_str);
+	
+	print_active_connections();
+	//Close out all active connections
+	int ret_val;
+	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+		if (connection_list[i] != NULL){
+			ret_val = close_connection(connection_list[i]);
+			if (ret_val){
+				sprintf(print_str, "\tSuccessfully Closed out Connection #%d", i);
+				puts(print_str);
+			}
+			else{
+				sprintf(print_str, "\tFAILED TO CLOSE CONNECTION #%d", i);
+				puts(print_str);
+			}
 		}
-		else{
-			sprintf(print_str, "    Tried to close FD #%d", i);
-			puts(print_str);
-		}
-	} */
+	}
+
 	puts("All Tidied up --> Exiting now");
 	exit(0);
 	
+}
+
+void sigpipe_handle(){
+	//SIGPIPE occurs when you try to write to server that does not exist
+	//IMPORTANT ---> crashes program if caught
+	puts("SIGPIPE CAUGHT! --> I aint quittin");
+}
+
+int assign_outgoing_port(int desired_port){
+	if (stream_cnt >= MAX_STREAMS){
+		puts("WARN: Too Many Outgoing Streams --> not setting up Gstreamer");
+		return 0;
+	}
+
+	//Does not matter what port you send to
+	stream_cnt++;
+	return desired_port;
+}
+
+int assign_incoming_port(int desired_port){
+	if (listen_cnt >= MAX_LISTENS){
+		puts("WARN: Too Many Incoming Streams --> not setting up Gstreamer");
+		return 0;
+	}
+
+	//puts("Good port found");
+	listen_cnt++;
+	return desired_port;
+}
+
+int find_good_incoming_port(int desired_port){
+	if (listen_cnt >= MAX_LISTENS){
+		puts("WARN: Cannot LISTEN to anymore streams");
+		return 0;
+	}
+
+	if (desired_port == 0){
+		desired_port = rand()%65534 + 1;
+	}
+
+	int port_listed = 1;
+
+	while (port_listed){
+		//Check to see if port is already in use, assuming no
+		port_listed = 0;
+		for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+			if (connection_list[i] != NULL){
+				if (desired_port == connection_list[i]->in_port){
+					//if port is already listed, break and set listed to true
+					port_listed = 1;
+					break;
+				}
+
+			}
+		}
+		if (port_listed){
+			//if listed, generate a new random port and repeat process to see if listed
+			//loop only breaks if port is not listed
+			desired_port = rand()%65534 + 1; //Need to make sure 0 is not a returned port
+		}
+	}
+	
+	return desired_port;
+	
+}
+
+int find_good_outgoing_port(int desired_port){
+	if (stream_cnt >= MAX_STREAMS){
+		puts("WARN: Cannot STREAM to anymore devices");
+		return 0;
+	}
+	
+	if (desired_port == 0){
+		desired_port = rand()%65534 + 1;
+	}
+
+	return desired_port;
 }
 
 void parse_reply_code(int reply, char *copy_str){
@@ -84,7 +277,6 @@ void trim_user_input(char *input_str){
 
 int parse_mode(char *mode_str){
 	int mode = 0;
-	char listen[] = "listen", stream[] = "stream";
 	char *search = NULL;
 	char print_str[50] = {'\0'};
 
@@ -106,55 +298,109 @@ int parse_mode(char *mode_str){
 		mode = mode | STREAM;
 	}
 	
+	search = strstr(mode_str, "print");
+	if (search != NULL){
+		print_active_connections();
+	}
+	
 	return mode;
 }
 
+void *watch_connection(void *sock_inf){
+	//Convert void into struct and extract pertinent info
+	Connect_Info *new_sock = (Connect_Info *) sock_inf;
 
-void connect_gstreamer(){
-	char request[17] = {'\0'}, print_str[100] = {'\0'};
-	char server_reply[10] = {'\0'}, server_ip[18] = {'\0'};
-	int mode, listen_port, stream_port, socket_desc;
-	int ack = -1;
-	struct sockaddr_in server;
-	
-	//Create socket
-	printf("\nEnter Connecting Device IP: ");
-	fgets(server_ip, 18, stdin);
-	trim_user_input(server_ip);
-	
+	int socket_desc = new_sock->sock_desc;
+	struct sockaddr_in server = new_sock->sock_info;
+	char *server_ip = inet_ntoa(server.sin_addr);
+	char server_reply[10] = {'\0'}, print_str[100] = {'\0'};
 
-	socket_desc = socket(AF_INET , SOCK_STREAM , 0);
-	if (socket_desc == -1){
-		puts("ERROR: Could not create socket");
-		return;
-	}
-	
-	sock_desc_max = socket_desc; //Socket descs increase linearly from 2
-	sprintf(print_str, "Set sock_desc_max to %d", sock_desc_max);
+	//Spin and occasionally poll connected host
+	sprintf(print_str, "Managing Connection to Socket %d", socket_desc);
 	puts(print_str);
 
-	server.sin_addr.s_addr = inet_addr(server_ip);
-	server.sin_family = AF_INET;
-	server.sin_port = htons( send_port ); //TODO replace with REQUEST_PORT after testing
+	while(1){
+		sleep(HOST_POLL_PERIOD);
+		if( write(socket_desc , "Ping" , strlen("Ping")) < 0){
+			//puts("ERROR: Send failed --> Server Socket Closed");
+			break;
+		}
 
-	//Connect to remote server
-	if (connect(socket_desc , (struct sockaddr *)&server , sizeof(server)) < 0){
-		puts("ERROR: Could not connect to Device");
-		return;
+		//Receive a reply from the server
+		if( recv(socket_desc, server_reply , sizeof(server_reply) , 0) < 0){
+	
+			//puts("Server Socket Closed!, Closing my connections");
+			break;
+		}
+
+		if (strstr(server_reply, "Pong") != NULL){
+			//puts("\tPing Sent --> Pong Received!");
+		}
+		else{
+			//puts("Something else received, closing");
+			break;
+		}
 	}
+	sprintf(print_str, "Closing connection to Socket %d and closing pipelines", socket_desc);
+	puts(print_str);
+	close_connection(new_sock);
+	pthread_exit(NULL);
+}
 
-	puts("\tConnected to Device!");
+
+void connect_gstreamer(Connect_Info *new_sock){
+	//extract pertinent info
+	int socket_desc = new_sock->sock_desc;
+	struct sockaddr_in server = new_sock->sock_info;
+	char *server_ip = inet_ntoa(server.sin_addr);
+
+	char request[17] = {'\0'}, print_str[100] = {'\0'};
+	char server_reply[10] = {'\0'};
+	int mode, listen_port, stream_port;
+	int ack = -1;
+	pthread_t new_thread;
 
 	while (ack == -1){
 		char mode_str[30] = {'\0'};
 
-		printf("\n\tEnter Mode: ");
-		//TODO POSSIBLE BUG HERE 
-		fgets(mode_str, 30, stdin);
-		mode = parse_mode(mode_str);
+		int valid_mode = 0;
+		while (!valid_mode){
+			valid_mode = 1;
+			printf("\n\tEnter Mode: ");
+			fgets(mode_str, 30, stdin);
+			mode = parse_mode(mode_str);
+			
+			stream_port = find_good_outgoing_port(0);
 		
-		listen_port = rand()%65534 + 1;
-		stream_port = rand()%65534 + 1;
+			if (mode < 1 || mode > 3){
+				valid_mode = 0;
+			}
+			else{
+				if ((mode & LISTEN) == LISTEN){
+					listen_port = find_good_incoming_port(0); //Setting to 0 generates a random, but untaken port
+					if (!(listen_port)){
+						puts("ERROR: Cannot support more listens --> try a different mode");
+						valid_mode = 0;
+					}
+				}
+				else{
+					//If listening not involved, just set to a number > 0
+					listen_port = 1;
+				}
+				if ((mode & STREAM) == STREAM){
+					stream_port = find_good_outgoing_port(0); //Setting to 0 generates a random port
+					if (!(stream_port)){
+						puts("ERROR: Cannot support more streams --> try a different mode");
+						valid_mode = 0;
+					}
+				}
+				else{
+					//If streaming not involved, just set to a number > 0
+					stream_port = 1;
+				}
+				
+			}
+		}
 
 		sprintf(request, "|%d|%d|%d", mode, listen_port, stream_port);
 		if( send(socket_desc , request , strlen(request) , 0) < 0){
@@ -178,7 +424,9 @@ void connect_gstreamer(){
 		puts(print_str);
 	}
 	if (ack == -2){
-		puts("CONNECTION ERROR");
+		sprintf(print_str, "Closing connection to Socket %d", socket_desc);
+		puts(print_str);
+		close_connection(new_sock);
 	}
 	if (ack >= 0){
 		if (ack > 0){
@@ -189,87 +437,88 @@ void connect_gstreamer(){
 		puts("\n\tEverything Good to Go");
 		
 		if ((mode & LISTEN) == LISTEN){
-			//Listen Mode requested (Requesting Client would like to listen to your audio)
-			//TODO Set Up GSTREAMER G729_RECV code to listen_port
-			sprintf(print_str, "\tLISTEN MODE: Setting up G729_RECV for Port %d", listen_port);
-			puts(print_str);
+			/*TODO
+				set up Gstreamer pipe
+				set pipe_recv for Connect_Info
+			*/
+			//Requesting Client would like to listen to your audio
+			if(assign_incoming_port(listen_port) > 0){
+				new_sock->in_port = listen_port;
+				sprintf(print_str, "\tLISTEN MODE: Setting up G729 RECV for Port %d", listen_port);
+				puts(print_str);
+
+			}
+			else{
+				puts("error assigning incoming port :/. Not setting up G729 RECV");
+			}
+		
+			
 
 		}
 		if ((mode & STREAM) == STREAM){
-			//TODO Set Up GSTREAMER G729_SEND code to server_ip and stream_port
-			sprintf(print_str, "\tSTREAM MODE: Setting up G729_SEND to %s:%d", server_ip, stream_port);
-			puts(print_str);
-		}
-	}
-	
-	/*TODO REMOVE AFTER TESTING*/
-	//Spin and occasionally poll connected host
-	for(int i = 0; i < 10; i++){
-		sleep(2);
-		puts("\nLOOP TOP");
-		if( write(socket_desc , "Ping" , strlen("Ping")) < 0){
-			//TODO WHY DO YOU BREAK WHEN SERVER LEAVES?!?!?!?!!?
-			puts("ERROR: Send failed");
-			break;
-		}
-		puts("\tSent Ping!");
-		
-		//Receive a reply from the server
-		if( recv(socket_desc, server_reply , sizeof(server_reply) , 0) < 0){
-	
-			puts("Server Socket Closed!, Closing my connections");
-			break;
-		}
-		puts(server_reply);
-		if (strstr(server_reply, "Pong") != NULL){
-			puts("Pong Received!");
-		}
-		else{
-			puts("Something else received, closing");
-			break;
-		}
-		puts("LOOP BOTTOM");
-	}
-	puts("CLOSING SOCKET");
-	close(socket_desc);
-	/*REMOVE AFTER TESTING*/
-}
+			/*TODO
+				set up Gstreamer pipe
+				set pipe_send for Connect_Info
+			*/
+			//Requesting Client would like to listen to your audio
+			if(assign_outgoing_port(stream_port) > 0){
+				new_sock->out_port = stream_port;
+				sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", server_ip, stream_port);
+				puts(print_str);
 
-
-int assign_stream_port(int desired_port){
-	int port_listed = 1;
-	while (port_listed){
-		//Check to see if port is already in use, assuming no
-		port_listed = 0;
-		for(int i = 0; i < stream_cnt; i++){
-			if (desired_port == stream_ports[i]){
-				//if port is already listed, break and set listed to true
-				//puts("\t\tPORT ALready Taken!");
-				port_listed = 1;
-				break;
+			}
+			else{
+				puts("error assigning outgoing port :/. Not setting up G729 SEND");
 			}
 		}
-		if (port_listed){
-			//if listed, generate a new random port and repeat process to see if listed
-			//loop only breaks if port is not listed
-			desired_port = rand()%65534 + 1; //Need to make sure 0 is not a returned port
+		
+		//START CONNECTION WATCH THREAD
+		if (pthread_create(&new_thread, NULL, watch_connection, (void *)&new_sock) ){
+			puts("Error Creating Connection Watch thread");
 		}
+		else{
+			puts("Connection Watch Thread Successfully Created!");
+		}
+
+	}
+}
+
+void run_client(){
+	char print_str[100] = {'\0'}, server_ip[18] = {'\0'};
+	int socket_desc;
+	struct sockaddr_in server;
+	
+	//Create socket
+	printf("\nEnter Connecting Device IP: ");
+	fgets(server_ip, 18, stdin);
+	trim_user_input(server_ip);
+	
+
+	socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+	if (socket_desc == -1){
+		puts("ERROR: Could not create socket");
+		return;
 	}
 
-	//Found a port that's not listed
-	if (stream_cnt < MAX_STREAMS){
-		//Can Still make connections
-		//Increase connection cnt, add desired_port to list, return port set
-		stream_ports[stream_cnt] = desired_port;
-		stream_cnt++;
-		return desired_port;
-	}
-	else{
-		//If stream_cnt = (MAX-1), return -2 because cannot connect
-		//puts("WARN: CANNOT CONNECT: MAX CONNECTED ALREADY");
-		return -2;
+	server.sin_addr.s_addr = inet_addr(server_ip);
+	server.sin_family = AF_INET;
+	server.sin_port = htons( send_port ); //TODO replace with REQUEST_PORT after testing
+
+	//Connect to remote server
+	if (connect(socket_desc , (struct sockaddr *)&server , sizeof(server)) < 0){
+		puts("ERROR: Could not connect to Device");
+		return;
 	}
 
+	puts("\tConnected to Device!");
+
+	//Initialize connection struct
+	Connect_Info new_sock = initialize_connect_info(server, socket_desc);
+	int reg_value = register_new_connection(&new_sock);
+	if (reg_value >= 0){
+		connect_gstreamer(connection_list[reg_value]);
+	}
+	
 }
 
 int extract_packet_value(char *packet, int val_ind){
@@ -318,36 +567,37 @@ void handle_new_connection(void *sock_inf){
 		 -  1-65535 -> Changed Port
 	ACK CODE*/
 
-	puts("Made it to handle");
 	Connect_Info *new_sock = (Connect_Info *) sock_inf;
+
 	int new_socket = new_sock->sock_desc;
-	struct sockaddr_in client = new_sock->client;
+	struct sockaddr_in client = new_sock->sock_info;
 	
 	char *client_ip = inet_ntoa(client.sin_addr);
 	int client_port = ntohs(client.sin_port);
-	char print_str[250] = {'\0'};
+	char print_str[200] = {'\0'};
+	int ack, mode, listen_port, stream_port;
 	
 	sprintf(print_str, "\nConnection Accepted from %s:%d", client_ip,client_port);
 	puts(print_str);
 
 	sprintf(print_str, "\tNew Socket Value: %d", new_socket);
 	puts(print_str);
-
+	
+	//Establish Gstreamer Connection
 	for (int retry = 0; retry < MAX_RETRY; retry++){
 		char setup[500] = {'\0'};
-		int ack, mode, listen_port, stream_port;
 		
-		if( recv(new_socket, setup , sizeof(setup) , 0) < 0){
+		if( recv(new_socket, setup , sizeof(setup) , 0) < 0 ){
 			sprintf(print_str, "Connection to socket %d failed or closed before Gstreamer established, closing socket", new_socket);
 			puts(print_str);
-			close(new_socket);
+			close_connection(new_sock);
 			return;
 		}
 		
 		if(!((int)strlen(setup) > 0)){
 			sprintf(print_str, "0 Length Data recieved, closing socket ");
 			puts(print_str);
-			close(new_socket);
+			close_connection(new_sock);
 			return;
 		}
  
@@ -358,7 +608,7 @@ void handle_new_connection(void *sock_inf){
 		sprintf(print_str, "\t\tMode: %d | Listen: %d | Stream: %d", mode, listen_port, stream_port);
 		puts(print_str);
 
-		if ((mode < 1) || (mode > 4) || (listen_port == -1) || (listen_port > 65535) || (stream_port == -1) || (stream_port > 65535)){
+		if ((mode < 1) || (mode > 4) || (listen_port < 1) || (listen_port > 65535) || (stream_port < 1) || (stream_port > 65535)){
 			//BAD packet. Tell requesting client to try again
 			puts("WARN: COULD NOT PARSE -> BAD PACKET or Improper values");
 			ack = -1;
@@ -367,55 +617,46 @@ void handle_new_connection(void *sock_inf){
 			ack = 0;
 			//Packet Was Good
 			if ((mode & LISTEN) == LISTEN){
-				//Listen Mode requested (Requesting Client would like to listen to your audio)
-			
-				listen_cnt++;
-				if (listen_cnt > MAX_LISTENS){
-					//Check to make sure resources are not being strained
-					puts("WARN: Already sending out too many streams");
+				//Requesting Client would like to listen to your audio
+				if (!find_good_outgoing_port(listen_port)){
+					//Too many outgoing ports
 					ack = -2;
-					
+				}
+			}
+			if ((mode & STREAM) == STREAM){
+				//Requesting Client would like to stream their audio to you
+				int assigned_port;
+				assigned_port = find_good_incoming_port(stream_port);
+
+				if (!assigned_port){
+					ack=-2;
 				}
 				else{
+					if (!(assigned_port == stream_port)){
+						//Desired port did not work
+						//Send reply with port that was chosen
+						ack = assigned_port;
+						stream_port = ack;
+						puts("\t\tAssigned port was different from desired port");
+					}
 					
-					sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", client_ip, listen_port);
-					puts(print_str);
-					//TODO Set Up GSTREAMER G729_SEND code to client IP and listen_port
 				}
 				
 			}
-			if ((mode & STREAM) == STREAM){
-				//Stream Mode Requested (Requesting Client would like to stream their audio to you)
-				int assigned_port;
-				assigned_port = assign_stream_port(stream_port);
-				if (!(assigned_port == stream_port)){
-					//Desired port did not work
-					//Send reply with port that was chosen
-					ack = assigned_port;
-					puts("\t\tAssigned port was different from desired port");
-				}
-				if (assigned_port > 0){
-					//TODO Set Up GSTREAMER G729_RECV code for assigned Port
-					sprintf(print_str, "\tSTREAM MODE: Setting up G729 RECV for Port %d", assigned_port);
-					puts(print_str);
-				}
-			}
-			//Send Back acknowledgement
-			//If all good, send 0
-			//If alteration to streaming from requesting client, send back adjusted port
 		}
 
+		//Send Back acknowledgement
+		//If all good, send 0
+		//If alteration to streaming from requesting client, send back adjusted port
 		char ack_msg[10] = {'\0'};
+
 		if ( (retry == (MAX_RETRY - 1)) && (ack == -1) ){
-			//Send -2 if connection failed MAX_RETRY times
-			sprintf(ack_msg, "%d", -2);
-			write(new_socket , ack_msg , strlen(ack_msg));
-			puts("\tERROR: Unable to Connect! Leaving Loop");
+			ack = -2;
+			puts("\tERROR: Unable to Connect after MAX_REPLY times");
 		}
-		else{
-			sprintf(ack_msg, "%d", ack);
-			write(new_socket , ack_msg , strlen(ack_msg));
-		}
+
+		sprintf(ack_msg, "%d", ack);
+		write(new_socket , ack_msg , strlen(ack_msg));
 		
 		if (!(ack == -1)){
 			//Provided ACK is not -1, leave loop
@@ -423,6 +664,45 @@ void handle_new_connection(void *sock_inf){
 			break;
 		}
 
+	}
+	//Gstreamer Connection Navigated
+	//IFF ack is greater than or equal to 0 (good or changed stream port), setup gstreamer accordingly
+	if (ack >= 0 ){
+		if ((mode & LISTEN) == LISTEN){
+			/*TODO
+				set up Gstreamer pipe
+				set pipe_send for Connect_Info
+			*/
+			//Requesting Client would like to listen to your audio
+			if(assign_outgoing_port(listen_port) > 0){
+				new_sock->out_port = listen_port;
+				sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", client_ip, listen_port);
+				puts(print_str);
+
+			}
+			else{
+				puts("error assigning outgoing port :/. Not setting up G729 SEND");
+			}
+			
+		}
+		if ((mode & STREAM) == STREAM){
+			/*TODO
+				set up Gstreamer pipe
+				set pipe_send for Connect_Info
+			*/
+			//Requesting Client would like to stream their audio to you
+			
+			if(assign_incoming_port(stream_port) > 0){
+				new_sock->in_port = stream_port;
+				sprintf(print_str, "\tSTREAM MODE: Setting up G729 RECV for Port %d", stream_port);
+				puts(print_str);
+
+			}
+			else{
+				puts("error assigning incoming port :/. Not setting up G729 RECV");
+			}
+		
+		}
 	}
 	sprintf(print_str, "Managing Connection to Socket %d", new_socket);
 	puts(print_str);
@@ -432,18 +712,18 @@ void handle_new_connection(void *sock_inf){
 	while ( (read_size = recv(new_socket, nom_read , sizeof(nom_read) , 0)) > 0){
 		if (strstr(nom_read, "Ping") != NULL){
 			write(new_socket, "Pong", strlen("Pong"));
-			puts("Ping received --> sending Pong");
+			//puts("\tPing received --> sending Pong");
 		}
 	}
 	sprintf(print_str, "CONNECTION TO SOCKET %d CLOSED, shutting down pipelines that were set up", new_socket);
 	puts(print_str);
+	close_connection(new_sock);
 	
 }
 
 void *run_server(){
 	int socket_desc , new_socket , c;
 	struct sockaddr_in server , client;
-	pthread_t stream_threads[MAX_STREAMS];
 	char print_str[100] = {'\0'};
 
 	//Create socket
@@ -459,7 +739,7 @@ void *run_server(){
 	
 	//Bind
 	if( bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0){
-		puts("Server bind failed");
+		puts("WARN: Server Bind FAILED");
 		return (void *)1;
 	}
 	puts("Server Binded Successfully");
@@ -475,21 +755,12 @@ void *run_server(){
 		new_socket = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c);
 		if (new_socket > 0){
 			//Initialize connection struct
-			Connect_Info new_sock;
-			new_sock.sock_desc = new_socket;
-			new_sock.client = client;
-			new_sock.pipe_recv = NULL;
-			new_sock.pipe_send = NULL;
-			//Initialize connection struct
+			Connect_Info new_sock = initialize_connect_info(client, new_socket);
+			int reg_value = register_new_connection(&new_sock);
+			if (reg_value >= 0){
+				handle_new_connection((void *)connection_list[reg_value]); //TODO MAKE A NEW THREAD
+			}
 
-
-			sock_desc_max = new_socket; //sock_descriptors increase linearly from 2
-			sprintf(print_str, "Set sock_desc_max to %d", sock_desc_max);
-			puts(print_str);
-			handle_new_connection((void *)&new_sock);
-		}
-		else{
-			//puts("Connection failed with new socket");
 		}
 	}
 }	
@@ -503,6 +774,7 @@ int main(int argc , char *argv[]){
 
 	/*Attach Ctrl-C handle to close sockets*/
 	signal(SIGINT, cntrl_c_handle);
+	signal(SIGPIPE, sigpipe_handle);
 	
 	/*TODO REMOVE AFTER TESTING*/
 	printf("Enter port you would like to bind server to: ");
@@ -516,7 +788,7 @@ int main(int argc , char *argv[]){
 	
 	
 	/* Assign standard client-to-client port so other client does not stream to it*/
-	assign_stream_port(self_port); //TODO replace with REQUEST_PORT after testing
+	//assign_incoming_port(self_port); //TODO replace with REQUEST_PORT after testing
 	
 	/* Intializes random number generator */
 	srand((unsigned) time(&t));
@@ -531,7 +803,7 @@ int main(int argc , char *argv[]){
 	sleep(1);
 
 	while(1){
-		connect_gstreamer();
+		run_client();
 	}
 
 	return 0;
