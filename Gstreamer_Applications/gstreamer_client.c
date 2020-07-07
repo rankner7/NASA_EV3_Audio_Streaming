@@ -37,20 +37,21 @@ typedef struct connection_info {
 
 // FUNCTIONS
 void cntrl_c_handle(int sig){
-	puts("\nControl C caught");
+	puts("\n\nControl C caught");
+	/*
 	char print_str[30];
 	int close_res;
 	for(int i = 3; i < (sock_desc_max+1); i++){
 		close_res = close(i);
 		if (close_res == 0){
-			sprintf(print_str, "Closed FD #%d", i);
+			sprintf(print_str, "  Closed FD #%d", i);
 			puts(print_str);
 		}
 		else{
-			sprintf(print_str, "Tried to close FD #%d", i);
+			sprintf(print_str, "    Tried to close FD #%d", i);
 			puts(print_str);
 		}
-	} 
+	} */
 	puts("All Tidied up --> Exiting now");
 	exit(0);
 	
@@ -164,7 +165,7 @@ void connect_gstreamer(){
 		puts(print_str);
 		
 		//Receive a reply from the server
-		if( recv(socket_desc, server_reply , 2000 , 0) < 0){
+		if( recv(socket_desc, server_reply , sizeof(server_reply) , 0) < 0){
 	
 			puts("ERROR: Receive failed");
 			break;
@@ -202,7 +203,33 @@ void connect_gstreamer(){
 	}
 	
 	/*TODO REMOVE AFTER TESTING*/
-	sleep(20);
+	//Spin and occasionally poll connected host
+	for(int i = 0; i < 10; i++){
+		sleep(2);
+		puts("\nLOOP TOP");
+		if( write(socket_desc , "Ping" , strlen("Ping")) < 0){
+			//TODO WHY DO YOU BREAK WHEN SERVER LEAVES?!?!?!?!!?
+			puts("ERROR: Send failed");
+			break;
+		}
+		puts("\tSent Ping!");
+		
+		//Receive a reply from the server
+		if( recv(socket_desc, server_reply , sizeof(server_reply) , 0) < 0){
+	
+			puts("Server Socket Closed!, Closing my connections");
+			break;
+		}
+		puts(server_reply);
+		if (strstr(server_reply, "Pong") != NULL){
+			puts("Pong Received!");
+		}
+		else{
+			puts("Something else received, closing");
+			break;
+		}
+		puts("LOOP BOTTOM");
+	}
 	puts("CLOSING SOCKET");
 	close(socket_desc);
 	/*REMOVE AFTER TESTING*/
@@ -323,9 +350,6 @@ void handle_new_connection(void *sock_inf){
 			close(new_socket);
 			return;
 		}
-		
-		sprintf(print_str, "Receieve Length %ld", strlen(setup));
-		puts(print_str);
  
 		mode = extract_packet_value(setup,1);
 		listen_port = extract_packet_value(setup,2);
@@ -405,7 +429,12 @@ void handle_new_connection(void *sock_inf){
 
 	int read_size;
 	char nom_read[200];
-	while ( (read_size = recv(new_socket, nom_read , sizeof(nom_read) , 0)) > 0);
+	while ( (read_size = recv(new_socket, nom_read , sizeof(nom_read) , 0)) > 0){
+		if (strstr(nom_read, "Ping") != NULL){
+			write(new_socket, "Pong", strlen("Pong"));
+			puts("Ping received --> sending Pong");
+		}
+	}
 	sprintf(print_str, "CONNECTION TO SOCKET %d CLOSED, shutting down pipelines that were set up", new_socket);
 	puts(print_str);
 	
