@@ -28,6 +28,7 @@ int send_port = 0;//TODO REMOVE AFTER TESTING
 int self_port = 0;//TODO REMOVE AFTER TESTING
 
 typedef struct connection_info {
+	int active;
 	struct sockaddr_in sock_info;
 	int sock_desc;
 	int in_port;
@@ -36,7 +37,7 @@ typedef struct connection_info {
 	GstElement *pipe_send;
 }Connect_Info;
 
-Connect_Info *connection_list[MAX_STREAMS + MAX_LISTENS] = {NULL};
+Connect_Info connection_list[MAX_STREAMS + MAX_LISTENS];
 
 // FUNCTIONS
 void print_active_connections(){
@@ -44,15 +45,15 @@ void print_active_connections(){
 
 	puts("*************** BEGIN ACTIVE CONNECTIONS **************");
 	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
-		if (connection_list[i] != NULL){
+		if (connection_list[i].active){
 			sprintf(print_str, "  Connection #%d", i);
 			puts(print_str);
-			if (connection_list[i]->in_port > 0){
-				sprintf(print_str, "    Incoming stream to port %d", connection_list[i]->in_port);
+			if (connection_list[i].in_port > 0){
+				sprintf(print_str, "    Incoming stream to port %d", connection_list[i].in_port);
 				puts(print_str);
 			}
-			if (connection_list[i]->out_port > 0){
-				sprintf(print_str, "    Outgoing stream to %s:%d", inet_ntoa(connection_list[i]->sock_info.sin_addr), connection_list[i]->out_port);
+			if (connection_list[i].out_port > 0){
+				sprintf(print_str, "    Outgoing stream to %s:%d", inet_ntoa(connection_list[i].sock_info.sin_addr), connection_list[i].out_port);
 				puts(print_str);
 			}
 		}
@@ -62,11 +63,11 @@ void print_active_connections(){
 	puts("*************** END ACTIVE CONNECTIONS **************");
 }
 
-int register_new_connection(Connect_Info *new_connect){
+int find_new_connection_spot(){
 	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
-		if (connection_list[i] == NULL){
+		if (connection_list[i].active != 1 ){
 			//puts("Empty Spot Found");
-			connection_list[i] = new_connect;
+			connection_list[i].active = 1; //set just to make sure another thread doesnt grab this spot
 			return i;
 		}
 	}
@@ -78,9 +79,11 @@ int close_connection(Connect_Info *old_connect){
 	//find which pointer it is in the list
 	char print_str[50] = {'\0'};
 
+	print_active_connections();
+
 	int list_entry = -1;
 	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
-		if (old_connect == connection_list[i]){
+		if (old_connect == &connection_list[i]){
 			list_entry = i;
 		}
 	}
@@ -124,7 +127,7 @@ int close_connection(Connect_Info *old_connect){
 	//free(old_connect);
 
 	//free struct pointer
-	connection_list[list_entry] = NULL;
+	connection_list[list_entry].active = 0;
 	
 	puts("\tEverything went according to plan!");
 
@@ -135,6 +138,7 @@ int close_connection(Connect_Info *old_connect){
 Connect_Info initialize_connect_info(struct sockaddr_in sock_inf, int socket_desc){
 	Connect_Info temp_info;
 
+	temp_info.active = 1;
 	temp_info.sock_info = sock_inf;
 	temp_info.sock_desc = socket_desc;
 	temp_info.in_port = 0;
@@ -155,8 +159,8 @@ void cntrl_c_handle(int sig){
 	//Close out all active connections
 	int ret_val;
 	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
-		if (connection_list[i] != NULL){
-			ret_val = close_connection(connection_list[i]);
+		if (connection_list[i].active){
+			ret_val = close_connection(&connection_list[i]);
 			if (ret_val){
 				sprintf(print_str, "\tSuccessfully Closed out Connection #%d", i);
 				puts(print_str);
@@ -217,8 +221,8 @@ int find_good_incoming_port(int desired_port){
 		//Check to see if port is already in use, assuming no
 		port_listed = 0;
 		for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
-			if (connection_list[i] != NULL){
-				if (desired_port == connection_list[i]->in_port){
+			if (connection_list[i].active){
+				if (desired_port == connection_list[i].in_port){
 					//if port is already listed, break and set listed to true
 					port_listed = 1;
 					break;
@@ -315,6 +319,9 @@ void *watch_connection(void *sock_inf){
 	char *server_ip = inet_ntoa(server.sin_addr);
 	char server_reply[10] = {'\0'}, print_str[100] = {'\0'};
 
+	sprintf(print_str, "Socket Desc #%d at memory location %p in 'watch_connection", new_sock->sock_desc, new_sock);
+	puts(print_str);
+
 	//Spin and occasionally poll connected host
 	sprintf(print_str, "Managing Connection to Socket %d", socket_desc);
 	puts(print_str);
@@ -334,7 +341,7 @@ void *watch_connection(void *sock_inf){
 		}
 
 		if (strstr(server_reply, "Pong") != NULL){
-			//puts("\tPing Sent --> Pong Received!");
+			puts("\tPing Sent --> Pong Received!");
 		}
 		else{
 			//puts("Something else received, closing");
@@ -348,8 +355,9 @@ void *watch_connection(void *sock_inf){
 }
 
 
-void connect_gstreamer(Connect_Info *new_sock){
+void connect_gstreamer(int reg_value){
 	//extract pertinent info
+	Connect_Info *new_sock = &connection_list[reg_value];
 	int socket_desc = new_sock->sock_desc;
 	struct sockaddr_in server = new_sock->sock_info;
 	char *server_ip = inet_ntoa(server.sin_addr);
@@ -359,6 +367,9 @@ void connect_gstreamer(Connect_Info *new_sock){
 	int mode, listen_port, stream_port;
 	int ack = -1;
 	pthread_t new_thread;
+
+	sprintf(print_str, "Socket Desc #%d at memory location %p in 'connect_gstreamer", new_sock->sock_desc, new_sock);
+	puts(print_str);
 
 	while (ack == -1){
 		char mode_str[30] = {'\0'};
@@ -463,7 +474,7 @@ void connect_gstreamer(Connect_Info *new_sock){
 			//Requesting Client would like to listen to your audio
 			if(assign_outgoing_port(stream_port) > 0){
 				new_sock->out_port = stream_port;
-				sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", server_ip, stream_port);
+				sprintf(print_str, "\tSTREAM MODE: Setting up G729 SEND to %s:%d", server_ip, stream_port);
 				puts(print_str);
 
 			}
@@ -472,8 +483,9 @@ void connect_gstreamer(Connect_Info *new_sock){
 			}
 		}
 		
+		//watch_connection((void *)&connection_list[reg_value]);
 		//START CONNECTION WATCH THREAD
-		if (pthread_create(&new_thread, NULL, watch_connection, (void *)&new_sock) ){
+		if (pthread_create(&new_thread, NULL, watch_connection, (void *)&connection_list[reg_value]) ){
 			puts("Error Creating Connection Watch thread");
 		}
 		else{
@@ -513,10 +525,13 @@ void run_client(){
 	puts("\tConnected to Device!");
 
 	//Initialize connection struct
-	Connect_Info new_sock = initialize_connect_info(server, socket_desc);
-	int reg_value = register_new_connection(&new_sock);
+	int reg_value = find_new_connection_spot();
+	connection_list[reg_value] = initialize_connect_info(server, socket_desc);
+	sprintf(print_str, "Registered Socket Desc #%d in spot #%d, at memory location %p", socket_desc, reg_value, &connection_list[reg_value]);
+	puts(print_str);
+	print_active_connections();
 	if (reg_value >= 0){
-		connect_gstreamer(connection_list[reg_value]);
+		connect_gstreamer(reg_value);
 	}
 	
 }
@@ -542,7 +557,7 @@ int extract_packet_value(char *packet, int val_ind){
 	}
 }
 
-void handle_new_connection(void *sock_inf){
+void *handle_new_connection(void *sock_inf){
 	/*Setup String Format
 	From the client requesting
 		|mode|ListenPort|StreamPort
@@ -577,6 +592,9 @@ void handle_new_connection(void *sock_inf){
 	char print_str[200] = {'\0'};
 	int ack, mode, listen_port, stream_port;
 	
+	sprintf(print_str, "Socket Desc #%d at memory location %p in 'handle_new_connection", new_socket, new_sock);
+	puts(print_str);
+	
 	sprintf(print_str, "\nConnection Accepted from %s:%d", client_ip,client_port);
 	puts(print_str);
 
@@ -586,19 +604,20 @@ void handle_new_connection(void *sock_inf){
 	//Establish Gstreamer Connection
 	for (int retry = 0; retry < MAX_RETRY; retry++){
 		char setup[500] = {'\0'};
+		int recv_val;
 		
-		if( recv(new_socket, setup , sizeof(setup) , 0) < 0 ){
-			sprintf(print_str, "Connection to socket %d failed or closed before Gstreamer established, closing socket", new_socket);
+		if( (recv_val = recv(new_socket, setup , sizeof(setup) , 0)) < 0 ){
+			sprintf(print_str, "Connection to socket %d failed (%d) or closed before Gstreamer established, closing socket", new_socket, recv_val);
 			puts(print_str);
 			close_connection(new_sock);
-			return;
+			return (void *)1;
 		}
 		
 		if(!((int)strlen(setup) > 0)){
 			sprintf(print_str, "0 Length Data recieved, closing socket ");
 			puts(print_str);
 			close_connection(new_sock);
-			return;
+			return (void *)1;
 		}
  
 		mode = extract_packet_value(setup,1);
@@ -752,13 +771,28 @@ void *run_server(){
 	c = sizeof(struct sockaddr_in);
 
 	while(1){
+		pthread_t new_thread;
 		new_socket = accept(socket_desc, (struct sockaddr *)&client, (socklen_t*)&c);
 		if (new_socket > 0){
 			//Initialize connection struct
-			Connect_Info new_sock = initialize_connect_info(client, new_socket);
-			int reg_value = register_new_connection(&new_sock);
+			//Initialize connection struct
+			int reg_value = find_new_connection_spot();
+			print_active_connections();
 			if (reg_value >= 0){
-				handle_new_connection((void *)connection_list[reg_value]); //TODO MAKE A NEW THREAD
+				connection_list[reg_value] = initialize_connect_info(client, new_socket);
+				sprintf(print_str, "Registered Socket Desc #%d in spot #%d, at memory location %p", socket_desc, reg_value, &connection_list[reg_value]);
+				puts(print_str);
+			
+				if (pthread_create(&new_thread, NULL, handle_new_connection, (void *)&connection_list[reg_value]) ){
+					puts("Error Creating Connection Handle thread");
+				}
+				else{
+					puts("Handle Connection Thread Successfully Created!");
+				}
+			}
+			else{
+				puts("Error Registering Connection");
+				close(new_socket);
 			}
 
 		}
