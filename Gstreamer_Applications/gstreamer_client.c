@@ -23,7 +23,6 @@
 int stream_cnt = 0;
 int listen_cnt = 0;
 
-
 int send_port = 0;//TODO REMOVE AFTER TESTING
 int self_port = 0;//TODO REMOVE AFTER TESTING
 
@@ -40,6 +39,11 @@ typedef struct connection_info {
 Connect_Info connection_list[MAX_STREAMS + MAX_LISTENS];
 
 /**********  FUNCTIONS ***************/
+//Gstreamer Functions
+static gboolean link_elements_with_filter (GstElement *element1, GstElement *element2, GstCaps *caps);
+GstElement *g729_recv(int port);
+GstElement *g729_send(char *client_ip, int port);
+
 //Global Connection Object Management
 void print_active_connections();
 int find_new_connection_spot();
@@ -76,10 +80,18 @@ int main(int argc , char *argv[]){
 	pthread_t server_thread;
 	char port_input[10] = {'\0'};
 
+	//Zero out global flags
+	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
+		connection_list[i].active = 0;
+	}
+
 	/*Attach Ctrl-C handle to close sockets*/
 	signal(SIGINT, cntrl_c_handle);
 	signal(SIGPIPE, sigpipe_handle);
 	
+	/* Initialize Gstreamer */
+	gst_init (NULL, NULL);
+
 	/*TODO REMOVE AFTER TESTING*/
 	printf("Enter port you would like to bind server to: ");
 	fgets(port_input, 10, stdin);
@@ -127,6 +139,14 @@ void print_active_connections(){
 			}
 			if (connection_list[i].out_port > 0){
 				sprintf(print_str, "    Outgoing stream to %s:%d", inet_ntoa(connection_list[i].sock_info.sin_addr), connection_list[i].out_port);
+				puts(print_str);
+			}
+			if (connection_list[i].pipe_recv != NULL){
+				sprintf(print_str, "    G729 RECV running from %p", connection_list[i].pipe_recv);
+				puts(print_str);
+			}
+			if (connection_list[i].pipe_send != NULL){
+				sprintf(print_str, "    G729 SEND running from %p", connection_list[i].pipe_send);
 				puts(print_str);
 			}
 		}
@@ -181,15 +201,17 @@ int close_connection(Connect_Info *old_connect){
 	
 	//set non null pipes to GST_STATE_NULL and unref
 	if (old_connect->pipe_recv != NULL){
-		puts("\tShutting down Recieve Pipeline");
+		puts("\tShutting down G729 RECV Pipeline");
 		gst_element_set_state (old_connect->pipe_recv, GST_STATE_NULL);
 		gst_object_unref (GST_OBJECT (old_connect->pipe_recv));
+		old_connect->pipe_recv = NULL;
 	}
 
 	if (old_connect->pipe_send != NULL){
-		puts("\tShutting down Recieve Pipeline");
+		puts("\tShutting down G729 SEND Pipeline");
 		gst_element_set_state (old_connect->pipe_send, GST_STATE_NULL);
 		gst_object_unref (GST_OBJECT (old_connect->pipe_send));
+		old_connect->pipe_send = NULL;
 	}
 
 	//Close socket
@@ -228,7 +250,6 @@ void cntrl_c_handle(int sig){
 	char print_str[50] = {'\0'};
 	puts("\n\nControl C caught");
 	
-	print_active_connections();
 	//Close out all active connections
 	int ret_val;
 	for(int i = 0; i < (MAX_STREAMS + MAX_LISTENS); i++){
@@ -519,48 +540,70 @@ void connect_gstreamer(int reg_value){
 		puts("\n\tEverything Good to Go");
 		
 		if ((mode & LISTEN) == LISTEN){
-			/*TODO
-				set up Gstreamer pipe
-				set pipe_recv for Connect_Info
-			*/
-			//Requesting Client would like to listen to your audio
+			//You would like to listen to connected device's audio
 			if(assign_incoming_port(listen_port) > 0){
+				//Assign Incoming Port
 				new_sock->in_port = listen_port;
+
 				sprintf(print_str, "\tLISTEN MODE: Setting up G729 RECV for Port %d", listen_port);
 				puts(print_str);
 
+				//Make and set G729 RECV pipeline
+				GstElement *recv_pipe = g729_recv(listen_port);
+				if (recv_pipe != NULL){
+					//Pipeline successfully created and playing
+					new_sock->pipe_recv = recv_pipe;
+					puts("\tG729 RECV Successfully Created!");
+					
+				}
+				else{
+					//Pipeline failed --> free up for others to use
+					puts("ERROR: G729 RECV CREATION FAILED");
+				}
+
 			}
 			else{
-				puts("error assigning incoming port :/. Not setting up G729 RECV");
+				puts("ERROR: Error assigning incoming port :/. Not setting up G729 RECV");
 			}
 		
 			
 
 		}
 		if ((mode & STREAM) == STREAM){
-			/*TODO
-				set up Gstreamer pipe
-				set pipe_send for Connect_Info
-			*/
-			//Requesting Client would like to listen to your audio
+			//You would like to stream to the connected device
 			if(assign_outgoing_port(stream_port) > 0){
+				//Assign and set outgoing port
 				new_sock->out_port = stream_port;
+
 				sprintf(print_str, "\tSTREAM MODE: Setting up G729 SEND to %s:%d", server_ip, stream_port);
 				puts(print_str);
 
+				//Make and set G729 SEND pipeline
+				GstElement *send_pipe = g729_send(server_ip, stream_port);
+				if (send_pipe != NULL){
+					//Pipeline successfully created and playing
+					new_sock->pipe_send = send_pipe;
+					puts("\tG729 SEND Successfully Created!");
+					
+				}
+				else{
+					//Pipeline failed --> free up for others to use
+					puts("ERROR: G729 RECV CREATION FAILED");
+				}
+
 			}
 			else{
-				puts("error assigning outgoing port :/. Not setting up G729 SEND");
+				puts("ERROR: Error assigning outgoing port :/. Not setting up G729 SEND");
 			}
 		}
 		
 		//watch_connection((void *)&connection_list[reg_value]);
 		//START CONNECTION WATCH THREAD
 		if (pthread_create(&new_thread, NULL, watch_connection, (void *)&connection_list[reg_value]) ){
-			puts("Error Creating Connection Watch thread");
+			puts("ERROR: Error Creating Connection Watch thread");
 		}
 		else{
-			puts("Connection Watch Thread Successfully Created!");
+			puts("\tConnection Watch Thread Successfully Created!");
 		}
 
 	}
@@ -759,15 +802,26 @@ void *handle_new_connection(void *sock_inf){
 	//IFF ack is greater than or equal to 0 (good or changed stream port), setup gstreamer accordingly
 	if (ack >= 0 ){
 		if ((mode & LISTEN) == LISTEN){
-			/*TODO
-				set up Gstreamer pipe
-				set pipe_send for Connect_Info
-			*/
 			//Requesting Client would like to listen to your audio
 			if(assign_outgoing_port(listen_port) > 0){
+				//Assign outgoing port
 				new_sock->out_port = listen_port;
+
 				sprintf(print_str, "\tLISTEN MODE: Setting up G729 SEND to %s:%d", client_ip, listen_port);
 				puts(print_str);
+		
+				//Make and set G729 SEND pipeline
+				GstElement *send_pipe = g729_send(client_ip, listen_port);
+				if (send_pipe != NULL){
+					//Pipeline successfully created and playing
+					new_sock->pipe_send = send_pipe;
+					puts("\tG729 SEND Successfully Created!");
+					
+				}
+				else{
+					//Pipeline failed --> free up for others to use
+					puts("ERROR: G729 RECV CREATION FAILED");
+				}
 
 			}
 			else{
@@ -776,16 +830,27 @@ void *handle_new_connection(void *sock_inf){
 			
 		}
 		if ((mode & STREAM) == STREAM){
-			/*TODO
-				set up Gstreamer pipe
-				set pipe_send for Connect_Info
-			*/
 			//Requesting Client would like to stream their audio to you
 			
 			if(assign_incoming_port(stream_port) > 0){
+				//Assign Incoming Port
 				new_sock->in_port = stream_port;
+
 				sprintf(print_str, "\tSTREAM MODE: Setting up G729 RECV for Port %d", stream_port);
 				puts(print_str);
+
+				//Make and set G729 RECV pipeline
+				GstElement *recv_pipe = g729_recv(stream_port);
+				if (recv_pipe != NULL){
+					//Pipeline successfully created and playing
+					new_sock->pipe_recv = recv_pipe;
+					puts("\tG729 RECV Successfully Created!");
+					
+				}
+				else{
+					//Pipeline failed --> free up for others to use
+					puts("ERROR: G729 RECV CREATION FAILED");
+				}
 
 			}
 			else{
@@ -868,5 +933,138 @@ void *run_server(){
 
 		}
 	}
-}	
+}
+
+GstElement *g729_recv(int port){
+
+	char print_str[100] = {'\0'};
+
+	GstElement *pipeline, *udpsrc, *decoder, *rtp_depay, *converter, *audiosink;
+
+	//Create Pipeline Elements
+	char pipeline_name[20];
+	sprintf(pipeline_name, "g729_recv_%d", port);
+
+	pipeline   = gst_pipeline_new (pipeline_name);
+	udpsrc     = gst_element_factory_make ("udpsrc",        NULL);
+	decoder    = gst_element_factory_make ("g729dec",       NULL);
+	rtp_depay  = gst_element_factory_make ("rtpg729depay",  NULL);
+	converter  = gst_element_factory_make ("audioconvert",  NULL);
+	audiosink  = gst_element_factory_make ("autoaudiosink", NULL);
+
+	//Check proper creation
+	if (!pipeline || !udpsrc || !decoder || !rtp_depay || !converter || !audiosink) {
+		g_printerr ("One G729_RECV element could not be created. Exiting.\n");
+		return NULL;
+	}
+
+	//puts("PIPELINE ELEMENTS CREATED PROPERLY\n");
+
+	//Set Properties of Objects
+	GstCaps *rtp_caps;
+	rtp_caps = gst_caps_new_simple ("application/x-rtp",
+		  "media", G_TYPE_STRING, "audio",
+		  "clock-rate", G_TYPE_INT, 8000,
+		  "encoding-name", G_TYPE_STRING, "G729",
+		  NULL);
+
+	g_object_set (G_OBJECT (udpsrc), 
+								"port", port,
+								"caps", rtp_caps,
+								 NULL);
+
+	//Add Elements to Bin
+	gst_bin_add_many (GST_BIN (pipeline),
+		            udpsrc, rtp_depay, decoder, converter, audiosink, NULL);
+
+	//puts("ELEMENTS ADDED TO BIN\n");
+
+	//Link Proper Capabilities
+	gst_element_link_many(udpsrc, rtp_depay, decoder, converter, audiosink, NULL);
+
+	//puts("ELEMENTS LINKED PROPERLY\n");
+
+	gst_element_set_state (pipeline, GST_STATE_PLAYING);
+	sprintf(print_str, "\tNow listening on port %d with pipe %p", port, pipeline);
+	puts(print_str);
+
+	return pipeline;
+}
+
+static gboolean link_elements_with_filter (GstElement *element1, GstElement *element2, GstCaps *caps) {
+  
+  gboolean link_ok;
+
+  link_ok = gst_element_link_filtered (element1, element2, caps);
+  gst_caps_unref (caps);
+
+  if (!link_ok) {
+		gchar *name1, *name2;
+
+		g_object_get (G_OBJECT (element1), "name", &name1, NULL);
+		g_object_get (G_OBJECT (element2), "name", &name2, NULL);
+ 		
+    g_warning ("Failed to link '%s' and '%s'!\n", name1, name2);
+
+		g_free (name1);
+		g_free (name2);
+  }
+
+  return link_ok;
+}
+
+GstElement *g729_send(char *client_ip, int port){
+
+	char print_str[100] = {'\0'};
+
+	GstElement *pipeline, *audiosource, *encoder, *rtp_pay, *udpsink;
+
+	//Create Pipeline Elements
+	char pipeline_name[40];
+	sprintf(pipeline_name, "g729_send_%s:%d", client_ip, port);
+
+	pipeline = gst_pipeline_new (pipeline_name);
+	audiosource = gst_element_factory_make ("autoaudiosrc",  NULL);
+	encoder     = gst_element_factory_make ("g729enc",       NULL);
+	rtp_pay     = gst_element_factory_make ("rtpg729pay",    NULL);
+	udpsink     = gst_element_factory_make ("udpsink",       NULL);
+
+	//Check proper creation
+	if (!pipeline || !audiosource || !encoder || !rtp_pay || !udpsink) {
+		g_printerr ("One G729_SEND element could not be created\n");
+		return NULL;
+	}
+
+	//Set Properties of Objects
+	g_object_set (G_OBJECT (udpsink), 
+								"host", client_ip,
+								"port", port,
+								 NULL);
+
+
+	gst_bin_add_many (GST_BIN (pipeline),
+		            audiosource, encoder, rtp_pay, udpsink, NULL);
+
+	//Link Proper Capabilities
+	GstCaps *raw_caps;
+	raw_caps = gst_caps_new_simple ("audio/x-raw",
+		  "format", G_TYPE_STRING, "S16LE",
+		  "channels", G_TYPE_INT, 1,
+		  "rate", G_TYPE_INT, 8000,
+		  NULL);
+
+	if (!link_elements_with_filter(audiosource, encoder, raw_caps)){
+		puts("Caps not negotiated!");
+		return NULL;
+	}
+
+	gst_element_link_many(encoder, rtp_pay, udpsink, NULL);
+
+	gst_element_set_state (pipeline, GST_STATE_PLAYING);
+	sprintf(print_str, "\tNow sending to %s:%d with pipe %p", client_ip, port, pipeline);
+	puts(print_str);
+	
+	return pipeline;
+}
+	
 
