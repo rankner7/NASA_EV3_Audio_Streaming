@@ -39,7 +39,80 @@ typedef struct connection_info {
 
 Connect_Info connection_list[MAX_STREAMS + MAX_LISTENS];
 
-// FUNCTIONS
+/**********  FUNCTIONS ***************/
+//Global Connection Object Management
+void print_active_connections();
+int find_new_connection_spot();
+int close_connection(Connect_Info *old_connect);
+Connect_Info initialize_connect_info(struct sockaddr_in sock_inf, int socket_desc);
+	
+//Signal Handlers
+void cntrl_c_handle(int sig);
+void sigpipe_handle();
+
+//Port Management
+int assign_outgoing_port(int desired_port);
+int assign_incoming_port(int desired_port);
+int find_good_incoming_port(int desired_port);
+int find_good_outgoing_port(int desired_port);
+
+//Client Tools
+void parse_reply_code(int reply, char *copy_str);
+void trim_user_input(char *input_str);
+int parse_mode(char *mode_str);
+void *watch_connection(void *sock_inf);
+void connect_gstreamer(int reg_value);
+void run_client();
+
+//Server Tools
+int extract_packet_value(char *packet, int val_ind);
+void *handle_new_connection(void *sock_inf);
+void *run_server();
+
+
+int main(int argc , char *argv[]){
+	
+	time_t t;
+	pthread_t server_thread;
+	char port_input[10] = {'\0'};
+
+	/*Attach Ctrl-C handle to close sockets*/
+	signal(SIGINT, cntrl_c_handle);
+	signal(SIGPIPE, sigpipe_handle);
+	
+	/*TODO REMOVE AFTER TESTING*/
+	printf("Enter port you would like to bind server to: ");
+	fgets(port_input, 10, stdin);
+	self_port = atoi(port_input);
+
+	printf("Enter port you would like connect with: ");
+	fgets(port_input, 10, stdin);
+	send_port = atoi(port_input);
+	/*REMOVE AFTER TESTING */
+	
+	
+	/* Assign standard client-to-client port so other client does not stream to it*/
+	//assign_incoming_port(self_port); //TODO replace with REQUEST_PORT after testing
+	
+	/* Intializes random number generator */
+	srand((unsigned) time(&t));
+	
+	if ( pthread_create(&server_thread, NULL, run_server, NULL) ){
+		puts("Error Creating run server thread");
+	}
+	else{
+		puts("Server Thread Successfully Created!");
+	}
+	
+	sleep(1);
+
+	while(1){
+		run_client();
+	}
+
+	return 0;
+}
+
 void print_active_connections(){
 	char print_str[50] = {'\0'};
 
@@ -797,46 +870,3 @@ void *run_server(){
 	}
 }	
 
-
-int main(int argc , char *argv[]){
-	
-	time_t t;
-	pthread_t server_thread;
-	char port_input[10] = {'\0'};
-
-	/*Attach Ctrl-C handle to close sockets*/
-	signal(SIGINT, cntrl_c_handle);
-	signal(SIGPIPE, sigpipe_handle);
-	
-	/*TODO REMOVE AFTER TESTING*/
-	printf("Enter port you would like to bind server to: ");
-	fgets(port_input, 10, stdin);
-	self_port = atoi(port_input);
-
-	printf("Enter port you would like connect with: ");
-	fgets(port_input, 10, stdin);
-	send_port = atoi(port_input);
-	/*REMOVE AFTER TESTING */
-	
-	
-	/* Assign standard client-to-client port so other client does not stream to it*/
-	//assign_incoming_port(self_port); //TODO replace with REQUEST_PORT after testing
-	
-	/* Intializes random number generator */
-	srand((unsigned) time(&t));
-	
-	if ( pthread_create(&server_thread, NULL, run_server, NULL) ){
-		puts("Error Creating run server thread");
-	}
-	else{
-		puts("Server Thread Successfully Created!");
-	}
-	
-	sleep(1);
-
-	while(1){
-		run_client();
-	}
-
-	return 0;
-}
