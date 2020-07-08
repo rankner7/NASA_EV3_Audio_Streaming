@@ -265,7 +265,7 @@ void parse_reply_code(int reply, char *copy_str){
 		sprintf(copy_str, "\t\tALL GOOD: Packet was parsed and configuration was accepted!");
 	}
 	if (reply > 0){
-		sprintf(copy_str, "\t\tStream Port Change: Code value is port to be used");
+		sprintf(copy_str, "\t\tStream Port Change: Code value is port to be used (%d)", reply);
 	}
 }
 
@@ -380,8 +380,6 @@ void connect_gstreamer(int reg_value){
 			printf("\n\tEnter Mode: ");
 			fgets(mode_str, 30, stdin);
 			mode = parse_mode(mode_str);
-			
-			stream_port = find_good_outgoing_port(0);
 		
 			if (mode < 1 || mode > 3){
 				valid_mode = 0;
