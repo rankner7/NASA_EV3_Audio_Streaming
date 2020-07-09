@@ -78,6 +78,11 @@ else
 	echo "  You do not have Debian"
 fi
 
+if [[ ${#os_name} -eq 0 ]]; then
+	echo "Unable to Identify your OS :/"
+	exit 0
+fi
+
 #======= Check GCC Existence ===============
 gcc_out=$(gcc --version)
 good_check='Copyright (C)'
