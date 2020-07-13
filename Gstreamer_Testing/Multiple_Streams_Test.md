@@ -72,4 +72,12 @@ In **one** terminal:
   * Risk: If extra operations are being performed by the device used for testing, performance of each technique may be significantly different on different/less complex devices
   * Impact: multiple threads is an easier architecture, but may suffer in performance depending on device --> more testing needed to determine this
 
+## UPDATES!!!
+* PulseAudio is a software server that can handle multiple incoming and outgoing streams --> This is why running the threads independently worked as well as mixing them. 'autoaudiosrc' most likely ran through pulseaudio
+  * _Follow Up_: **Need to determing exactly how many inputs and outputs pulseaudio can handle**
+  * Moreover, linux audio will perform differently than windows, so code may be more different for each system than just threading..._However_ performance should be similar across linux distros, as the performance is related to software
+  * may need to check for existence of pulse audio in setup script
+  * may be able to handle **well over 20 incoming streams** if mixing and sound server are employed --> (example) if pulse audio can handle 5 streams, and mixing can handle 5 streams, system can squeeze out 25 streams!
+* ALSA is Advanced Linux Sound Architecture, which the more physical driver of sound output for linux
+
 
