@@ -115,6 +115,11 @@ else
 	install_gstreamer $os_name
 fi
 
+echo $HOME
+echo "=============== REVOKING SUDO ACCESS ======================"
+sudo -k
+echo $HOME
+exit 0
 #======= Make Folder for all code and download =========
 code_folder="/gstreamer_client"
 g729_plugin_folder="/g729_plugin"
