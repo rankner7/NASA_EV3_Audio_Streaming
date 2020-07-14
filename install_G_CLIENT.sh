@@ -1,7 +1,8 @@
 #!/bin/bash
 ubuntu='Ubuntu'
-red_hat='Red Hat'
+red_hat='redhat'
 debian='Debian'
+raspi='Raspbian'
 
 function install_gcc {
 	case $1 in
@@ -12,6 +13,10 @@ function install_gcc {
 	$red_hat)
 		echo " Installing gcc for Red Hat/CentOS"
 		yum group install "Development Tools"
+		;;
+	$raspi)
+		echo " Installing gcc for Raspbian"
+		apt install build-essential
 		;;
 	esac	
 }
@@ -30,6 +35,10 @@ function install_gstreamer {
 		ln -s /var/lib/snapd/snap /snap
 		sudo snap install gstreamer --edge
 		;;
+	$raspi)
+		echo " Installing Gstreamer for Raspbian"
+		apt-get install gstreamer-1.0-tools
+		;;
 	esac	
 }
 
@@ -42,6 +51,10 @@ function install_git {
 	$red_hat)
 		echo " Installing Git for Red Hat/CentOS"
 		yum install git
+		;;
+	$raspi)
+		echo " Installing Git for Raspbian"
+		apt install git
 		;;
 	esac	
 }
@@ -57,31 +70,18 @@ os_dist=$(cat /etc/*-release)
 os_name=''
 
 echo "Finding Operating System"
-if [[ "$os_dist" == *"$ubuntu"* ]]; then
-	echo "You have Ubuntu"
-	os_name=$ubuntu
-else
-	echo "  You do not have Ubuntu"
-fi
 
-if [[ "$os_dist" == *"$red_hat"* ]]; then
-	echo "You have Red Hat"
-	os_name=$red_hat
-else
-	echo "  You do not have Red Hat"
-fi
+for OS_NAME in $ubuntu $debian $red_hat $raspi
+do
+	if [[ "$os_dist" == *"$OS_NAME"* ]]; then
+		echo "You have $OS_NAME"
+		os_name=$ubuntu
+	else
+		echo "  You do not have $OS_NAME"
+	fi
+done
 
-if [[ "$os_dist" == *"$debian"* ]]; then
-	echo "You have Debian"
-	os_name=$debian
-else
-	echo "  You do not have Debian"
-fi
-
-if [[ ${#os_name} -eq 0 ]]; then
-	echo "Unable to Identify your OS :/"
-	exit 0
-fi
+exit 0
 
 #======= Check GCC Existence ===============
 gcc_out=$(gcc --version)
