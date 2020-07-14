@@ -1,63 +1,125 @@
 #!/bin/bash
-ubuntu='Ubuntu'
-red_hat='redhat'
-debian='Debian'
-raspi='Raspbian'
+declare -a OSArray=("Ubuntu" "Debian" "Red Hat" "Raspbian")
+declare -a GstPkgArray=("libgstreamer1.0-0" "gstreamer1.0-plugins-base" "gstreamer1.0-plugins-good" "gstreamer1.0-plugins-bad" "gstreamer1.0-plugins-ugly" "gstreamer1.0-libav" "gstreamer1.0-doc" "gstreamer1.0-tools" "gstreamer1.0-x" "gstreamer1.0-alsa" "gstreamer1.0-gl" "gstreamer1.0-gtk3" "gstreamer1.0-qt5" "gstreamer1.0-pulseaudio")
+declare -a PluginTools=("automake" "autoconf" "libtool")
 
 function install_gcc {
+	pkg_name="GCC"
+	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
-	$ubuntu|$debian)
-		echo " Installing gcc for Debian/Ubuntu"
-		apt install build-essential
+	 0|1|3)
+		install_res=$(apt install build-essential)
 		;;
-	$red_hat)
-		echo " Installing gcc for Red Hat/CentOS"
-		yum group install "Development Tools"
+	2)
+		install_res=$(yum group install "Development Tools")
 		;;
-	$raspi)
-		echo " Installing gcc for Raspbian"
-		apt install build-essential
-		;;
-	esac	
+	esac
+
+	if [[ "$install_res" == *"newly installed"* ]]; then
+		echo " --> $pkg_name Installed Properly"
+	else
+		echo "ERROR Installing $pkg_name!!!"
+		echo "============ $pkg_name Error Report ================="
+		echo $(install_res)
+		echo "============ $pkg_name Error Report ================="
+		exit 0
+	fi	
+}
+
+function install_gstreamer_by_tool {
+	echo "Installing Gstreamer piece by piece"
+	for TOOL_NAME in "${GstPkgArray[@]}"; do
+		install_res=$(apt-get install $TOOL_NAME)
+		if [[ "$install_res" == *"newly installed"* ]]; then
+			echo " --> Good: $TOOL_NAME"
+		else
+			echo "ERROR INSTALLING $TOOL_NAME"
+		fi
+	done
+		
 }
 
 function install_gstreamer {
+	pkg_name="Gstreamer-1.0"
+	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
-	$ubuntu|$debian)
-		echo " Installing Gstreamer-1.0 for Debian/Ubuntu"
-		apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio
+	0|1)
+		install_res=$(apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio)
 		;;
-	$red_hat)
-		echo " Installing Gstreamer-1.0 for Red Hat/CentOS"
+	2)
 		yum install epel-release
 		yum install snapd
 		systemctl enable --now snapd.socket
 		ln -s /var/lib/snapd/snap /snap
 		sudo snap install gstreamer --edge
 		;;
-	$raspi)
-		echo " Installing Gstreamer for Raspbian"
-		apt-get install gstreamer-1.0-tools
+	3)
+		install_res=$(apt-get install gstreamer1.0-tools)
 		;;
-	esac	
+	esac
+	
+	if [[ "$install_res" == *"newly installed"* ]]; then
+		echo " --> $pkg_name Installed Properly"
+	else
+		echo "ERROR Installing $pkg_name!!!"
+		echo "============ $pkg_name Error Report ================="
+		echo $(install_res)
+		echo "============ $pkg_name Error Report ================="
+		case $1 in
+		0|1|3)
+			install_gstreamer_by_tool
+			;;
+		2)
+			echo "Don't know what to do for Red Hat in this situation :/"
+			;;
+		esac
+	fi	
 }
 
 function install_git {
+	pkg_name="Git"
+	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
-	$ubuntu|$debian)
-		echo " Installing Git for Debian/Ubuntu"
-		apt install git
+	0|1|3)
+		install_res=$(apt install git)
 		;;
-	$red_hat)
-		echo " Installing Git for Red Hat/CentOS"
-		yum install git
+	2)
+		install_res=$(yum install git)
 		;;
-	$raspi)
-		echo " Installing Git for Raspbian"
-		apt install git
-		;;
-	esac	
+	esac
+	if [[ "$install_res" == *"newly installed"* ]]; then
+		echo " --> $pkg_name Installed Properly"
+	else
+		echo "ERROR Installing $pkg_name!!!"
+		echo "============ $pkg_name Error Report ================="
+		echo $(install_res)
+		echo "============ $pkg_name Error Report ================="
+		exit 0
+	fi	
 }
+
+function install_plugin_tool {
+	pkg_name=$2
+	echo " Installing $pkg_name for ${OSArray[$1]}"
+	case $1 in
+	0|1|3)
+		install_res=$(apt-get install -y $pkg_name)
+		;;
+	2)
+		install_res=$(yum group install "Development Tools")
+		;;
+	esac
+	if [[ "$install_res" == *"newly installed"* ]]; then
+		echo " --> $pkg_name Installed Properly"
+	else
+		echo "ERROR Installing $pkg_name!!!"
+		echo "============ $pkg_name Error Report ================="
+		echo $(install_res)
+		echo "============ $pkg_name Error Report ================="
+		exit 0
+	fi	
+}
+
 
 #======= Enforce Root User ===============
 if [[ "$EUID" -ne 0 ]]; then
@@ -67,19 +129,24 @@ fi
 
 #======= Get Operating System Info ===============
 os_dist=$(cat /etc/*-release)
-os_name=''
+os_name=-1
 
 echo "Finding Operating System"
 
-for OS_NAME in $ubuntu $debian $red_hat $raspi
+for OS_NAME_IND in "${!OSArray[@]}"
 do
-	if [[ "$os_dist" == *"$OS_NAME"* ]]; then
-		echo "You have $OS_NAME"
-		os_name=$ubuntu
+	if [[ "$os_dist" == *"${OSArray[OS_NAME_IND]}"* ]]; then
+		echo "You have ${OSArray[OS_NAME_IND]}"
+		os_name=$OS_NAME_IND
 	else
-		echo "  You do not have $OS_NAME"
+		echo "  You do not have ${OSArray[OS_NAME_IND]}"
 	fi
 done
+
+if [[ $os_name -lt 0 ]]; then
+	echo "COULD NOT DETERMINE OS --> exiting"
+	exit 0
+fi
 
 #======= Check GCC Existence ===============
 gcc_out=$(gcc --version)
@@ -115,11 +182,22 @@ else
 	install_gstreamer $os_name
 fi
 
-echo $HOME
-echo "=============== REVOKING SUDO ACCESS ======================"
-sudo -k
-echo $HOME
-exit 0
+#============== Check Plugin Tools =================
+for PLUGIN in "${PluginTools[@]}"; do
+	exist_query=$(dpkg -l ${PLUGIN})
+	if [[ "${exist_query}" == *"<none>"* ]]; then
+		echo "You do not have $PLUGIN --> I am installing it for you"
+		install_plugin_tool $os_name $PLUGIN
+	else
+		echo "You have $PLUGIN -------> Good!"
+	fi
+done
+
+if [[ $os_name -eq 3 ]]; then
+	HOME=/home/pi
+fi
+
+
 #======= Make Folder for all code and download =========
 code_folder="/gstreamer_client"
 g729_plugin_folder="/g729_plugin"
@@ -190,7 +268,8 @@ if [[ ${#find_loc} -gt 0 ]]; then
 	plugin_install_loc=${find_loc%/*} #gets rid of any weird formatting
 	echo "Found the Plugin Directory! --> $plugin_install_loc"
 else
-	echo "Could Not Find Plugin Directory --> Exiting"
+	echo "Could Not Find Plugin Directory --> Removing Folder and Exiting"
+	rm -r ${HOME}${code_folder}
 	exit 0
 fi
 
@@ -206,7 +285,8 @@ gst_out=$(gst-inspect-1.0 | grep g729enc)
 if [[ ${#gst_out} -gt 0 ]]; then
 	echo "Plugin linked properly!"
 else
-	echo "Error linking and finding plugin :/"
+	echo "Error linking and finding plugin :/--> Removing Folder and Exiting"
+	rm -r ${HOME}${code_folder}
 	exit 0
 fi
 
