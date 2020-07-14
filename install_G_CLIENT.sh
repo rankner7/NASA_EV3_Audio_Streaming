@@ -8,7 +8,7 @@ function install_gcc {
 	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
 	 0|1|3)
-		install_res=$(apt install build-essential)
+		install_res=$(apt install -y build-essential)
 		;;
 	2)
 		install_res=$(yum group install "Development Tools")
@@ -29,7 +29,7 @@ function install_gcc {
 function install_gstreamer_by_tool {
 	echo "Installing Gstreamer piece by piece"
 	for TOOL_NAME in "${GstPkgArray[@]}"; do
-		install_res=$(apt-get install $TOOL_NAME)
+		install_res=$(apt-get install -y $TOOL_NAME)
 		if [[ "$install_res" == *"newly installed"* ]]; then
 			echo " --> Good: $TOOL_NAME"
 		else
@@ -44,7 +44,7 @@ function install_gstreamer {
 	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
 	0|1)
-		install_res=$(apt-get install libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio)
+		install_res=$(apt-get install -y libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio)
 		;;
 	2)
 		yum install epel-release
@@ -54,7 +54,7 @@ function install_gstreamer {
 		sudo snap install gstreamer --edge
 		;;
 	3)
-		install_res=$(apt-get install gstreamer1.0-tools)
+		install_res=$(apt-get install -y gstreamer1.0-tools)
 		;;
 	esac
 	
@@ -81,7 +81,7 @@ function install_git {
 	echo " Installing $pkg_name for ${OSArray[$1]}"
 	case $1 in
 	0|1|3)
-		install_res=$(apt install git)
+		install_res=$(apt install -y git)
 		;;
 	2)
 		install_res=$(yum install git)
