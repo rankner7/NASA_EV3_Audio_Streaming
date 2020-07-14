@@ -181,7 +181,7 @@ else
 	echo "You do not have Git --> I am installing it for you"
 	install_gstreamer $os_name
 fi
-
+install_gstreamer $os_name
 #============== Check Plugin Tools =================
 for PLUGIN in "${PluginTools[@]}"; do
 	exist_query=$(dpkg -l ${PLUGIN})
