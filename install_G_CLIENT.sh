@@ -81,8 +81,6 @@ do
 	fi
 done
 
-exit 0
-
 #======= Check GCC Existence ===============
 gcc_out=$(gcc --version)
 good_check='Copyright (C)'
@@ -197,7 +195,6 @@ echo "setting GST_PLUGIN_PATH=$GST_PLUGIN_PATH"
 echo " --> Adding 'export GST_PLUGIN_PATH=$GST_PLUGIN_PATH' to .bashrc"
 cd
 echo "export GST_PLUGIN_PATH=$GST_PLUGIN_PATH" >> .bashrc
-#TODO add this back when giving to someone
 
 gst_out=$(gst-inspect-1.0 | grep g729enc)
 
