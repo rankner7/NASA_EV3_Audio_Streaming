@@ -247,7 +247,7 @@ echo "================= Running autogen.sh ==============================="
 echo ""
 echo "=========== Running configure with ITU source code download ==========="
 .${config_file} #--enable-refcode-download
-exit 0
+
 echo ""
 echo "=================== Running make ==============================="
 make
