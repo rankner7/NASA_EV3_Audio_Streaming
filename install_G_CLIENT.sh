@@ -1,6 +1,6 @@
 #!/bin/bash
 declare -a OSArray=("Ubuntu" "Debian" "Red Hat" "Raspbian")
-declare -a GstPkgArray=("libgstreamer1.0-0" "gstreamer1.0-plugins-base" "gstreamer1.0-plugins-good" "gstreamer1.0-plugins-bad" "gstreamer1.0-plugins-ugly" "gstreamer1.0-libav" "gstreamer1.0-doc" "gstreamer1.0-tools" "gstreamer1.0-x" "gstreamer1.0-alsa" "gstreamer1.0-gl" "gstreamer1.0-gtk3" "gstreamer1.0-qt5" "gstreamer1.0-pulseaudio")
+declare -a GstPkgArray=("libgstreamer1.0-0" "gstreamer1.0-plugins-base" "gstreamer1.0-plugins-good" "gstreamer1.0-plugins-bad" "gstreamer1.0-plugins-ugly" "gstreamer1.0-libav" "gstreamer1.0-doc" "gstreamer1.0-tools" "gstreamer1.0-x" "gstreamer1.0-alsa" "gstreamer1.0-gl" "gstreamer1.0-gtk3" "gstreamer1.0-qt5" "gstreamer1.0-pulseaudio" "libgstreamer-plugins-base1.0-dev" "libgstreamer-plugins-good1.0-0")
 declare -a PluginTools=("automake" "autoconf" "libtool" "pkg-config")
 
 function install_gcc {
@@ -27,15 +27,22 @@ function install_gcc {
 }
 
 function install_gstreamer_by_tool {
-	echo "Installing Gstreamer piece by piece"
-	for TOOL_NAME in "${GstPkgArray[@]}"; do
-		install_res=$(apt-get install -y $TOOL_NAME)
-		if [[ "$install_res" == *"newly installed"* ]]; then
-			echo " --> Good: $TOOL_NAME"
-		else
-			echo "ERROR INSTALLING $TOOL_NAME"
-		fi
-	done
+	case $1 in
+	0|1|3)
+		echo "Installing Gstreamer piece by piece"
+		for TOOL_NAME in "${GstPkgArray[@]}"; do
+			install_res=$(apt-get install -y $TOOL_NAME)
+			if [[ "$install_res" == *"newly installed"* ]]; then
+				echo " --> Good: $TOOL_NAME"
+			else
+				echo "ERROR INSTALLING $TOOL_NAME"
+			fi
+		done
+		;;
+	2)
+		install_gstreamer $1
+		;;
+	esac
 		
 }
 
@@ -67,7 +74,7 @@ function install_gstreamer {
 		echo "============ $pkg_name Error Report ================="
 		case $1 in
 		0|1|3)
-			install_gstreamer_by_tool
+			install_gstreamer_by_tool $1
 			;;
 		2)
 			echo "Don't know what to do for Red Hat in this situation :/"
@@ -171,6 +178,52 @@ else
 	install_gstreamer $os_name
 fi
 
+echo " Checking for important Gstreamer libraries"
+
+declare -a GstLibs=("gstreamer1.0-pulseaudio" "gstreamer1.0-plugins-base" "gstreamer1.0-plugins-good" "gstreamer1.0-plugins-bad" "gstreamer1.0-plugins-ugly" "libgstreamer-plugins-base1.0-dev" "libgstreamer1.0-dev")
+search_out=$(dpkg -l | grep gstreamer)
+all_exist=1
+for GST_LIB in "${GstLibs[@]}"; do
+	if [[ "$search_out" == *"$GST_LIB"* ]]; then
+		echo "  $GST_LIB --> Good!"
+	else
+		echo " COULD NOT FIND $GST_LIB"
+		all_exist=0
+	fi
+done
+
+search_out=$(dpkg -L libgstreamer1.0-dev | grep gstbin.h)
+if [[ ${#search_out} -eq 0 ]]; then
+	echo "GST_BASE directory not found or library not installed"
+	all_exist=0
+else
+	gst_base=${search_out%gstreamer-1.0*}
+	echo "   GST_BASE found --> $gst_base"
+	
+fi 
+
+search_out=$(dpkg -L libgstreamer-plugins-base1.0-dev | grep audio.h)
+if [[ ${#search_out} -eq 0 ]]; then
+	echo "GST_PLUGINS_BASE directory not found or library not installed"
+	all_exist=0
+else
+	gst_plugins_base=${search_out%gstreamer-1.0*}
+	echo "   GST_PLUGINS_BASE found --> $gst_plugins_base"
+	
+fi 
+
+gst_both=""
+if [[ "$gst_plugins_base" == "$gst_base" ]]; then
+	echo "  Base and plugins path the same --> consolidating"
+	gst_both=$gst_base
+fi
+
+if [[ $all_exist -eq 0 ]]; then
+	install_gstreamer_by_tool $os_name
+	echo "PLEASE RUN AGAIN --> Bye :p"
+	exit 0
+fi
+
 #============ Check Git ===================
 git_out=$(git --version)
 good_check='git version'
@@ -179,9 +232,9 @@ if [[ "$git_out" == *"$good_check"* ]]; then
 	echo "You have Git ------------> Good!"
 else
 	echo "You do not have Git --> I am installing it for you"
-	install_gstreamer $os_name
+	install_git $os_name
 fi
-install_gstreamer $os_name
+
 #============== Check Plugin Tools =================
 for PLUGIN in "${PluginTools[@]}"; do
 	exist_query=$(dpkg -l ${PLUGIN})
@@ -246,7 +299,12 @@ echo "================= Running autogen.sh ==============================="
 
 echo ""
 echo "=========== Running configure with ITU source code download ==========="
-.${config_file} #--enable-refcode-download
+if [[ ${#gst_both} -eq 0 ]]; then
+	.${config_file} --enable-refcode-download GST_LIBS="${gst_base};${gst_plugins_base}"
+else
+	.${config_file} --enable-refcode-download  GST_LIBS=${gst_both}
+fi
+.${config_file} --enable-refcode-download 
 
 echo ""
 echo "=================== Running make ==============================="
