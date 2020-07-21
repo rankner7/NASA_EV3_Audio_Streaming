@@ -1,17 +1,18 @@
 #!/bin/bash
-declare -a OSArray=("Ubuntu" "Debian" "Red Hat" "Raspbian")
+declare -a OSArray=("Ubuntu" "Debian" "rhel" "Raspbian")
+declare -a OSName=("Ubuntu" "Debian" "Red Hat" "Raspbian")
 declare -a GstPkgArray=("libgstreamer1.0-0" "gstreamer1.0-plugins-base" "gstreamer1.0-plugins-good" "gstreamer1.0-plugins-bad" "gstreamer1.0-plugins-ugly" "gstreamer1.0-libav" "gstreamer1.0-doc" "gstreamer1.0-tools" "gstreamer1.0-x" "gstreamer1.0-alsa" "gstreamer1.0-gl" "gstreamer1.0-gtk3" "gstreamer1.0-qt5" "gstreamer1.0-pulseaudio" "libgstreamer-plugins-base1.0-dev" "libgstreamer-plugins-good1.0-0")
 declare -a PluginTools=("automake" "autoconf" "libtool" "pkg-config")
 
 function install_gcc {
 	pkg_name="GCC"
-	echo " Installing $pkg_name for ${OSArray[$1]}"
+	echo " Installing $pkg_name for ${OSName[$1]}"
 	case $1 in
 	 0|1|3)
-		install_res=$(apt install -y build-essential)
+		install_res=$(sudo apt install -y build-essential)
 		;;
 	2)
-		install_res=$(yum group install "Development Tools")
+		install_res=$(sudo yum group install -y "Development Tools")
 		;;
 	esac
 
@@ -31,7 +32,7 @@ function install_gstreamer_by_tool {
 	0|1|3)
 		echo "Installing Gstreamer piece by piece"
 		for TOOL_NAME in "${GstPkgArray[@]}"; do
-			install_res=$(apt-get install -y $TOOL_NAME)
+			install_res=$(sudo apt-get install -y $TOOL_NAME)
 			if [[ "$install_res" == *"newly installed"* ]]; then
 				echo " --> Good: $TOOL_NAME"
 			else
@@ -48,20 +49,20 @@ function install_gstreamer_by_tool {
 
 function install_gstreamer {
 	pkg_name="Gstreamer-1.0"
-	echo " Installing $pkg_name for ${OSArray[$1]}"
+	echo " Installing $pkg_name for ${OSName[$1]}"
 	case $1 in
 	0|1)
-		install_res=$(apt-get install -y libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio)
+		install_res=$(sudo apt-get install -y libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-doc gstreamer1.0-tools gstreamer1.0-x gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-gtk3 gstreamer1.0-qt5 gstreamer1.0-pulseaudio)
 		;;
 	2)
-		yum install epel-release
-		yum install snapd
-		systemctl enable --now snapd.socket
-		ln -s /var/lib/snapd/snap /snap
-		sudo snap install gstreamer --edge
+		sudo yum install -y epel-release
+		sudo yum install -y snapd
+		sudo systemctl enable --now snapd.socket
+		sudo ln -s /var/lib/snapd/snap /snap
+		sudo snap install -y gstreamer --edge
 		;;
 	3)
-		install_res=$(apt-get install -y gstreamer1.0-tools)
+		install_res=$(sudo apt-get install -y gstreamer1.0-tools)
 		;;
 	esac
 	
@@ -85,13 +86,13 @@ function install_gstreamer {
 
 function install_git {
 	pkg_name="Git"
-	echo " Installing $pkg_name for ${OSArray[$1]}"
+	echo " Installing $pkg_name for ${OSName[$1]}"
 	case $1 in
 	0|1|3)
-		install_res=$(apt install -y git)
+		install_res=$(sudo apt install -y git)
 		;;
 	2)
-		install_res=$(yum install git)
+		install_res=$(sudo yum install -y git)
 		;;
 	esac
 	if [[ "$install_res" == *"newly installed"* ]]; then
@@ -107,13 +108,13 @@ function install_git {
 
 function install_plugin_tool {
 	pkg_name=$2
-	echo " Installing $pkg_name for ${OSArray[$1]}"
+	echo " Installing $pkg_name for ${OSName[$1]}"
 	case $1 in
 	0|1|3)
-		install_res=$(apt-get install -y $pkg_name)
+		install_res=$(sudo apt-get install -y $pkg_name)
 		;;
 	2)
-		install_res=$(yum group install "Development Tools")
+		install_res=$(sudo yum group install -y "Development Tools")
 		;;
 	esac
 	if [[ "$install_res" == *"newly installed"* ]]; then
@@ -129,9 +130,17 @@ function install_plugin_tool {
 
 
 #======= Enforce Root User ===============
-if [[ "$EUID" -ne 0 ]]; then
-	echo "Please run with sudo :)"
+#if [[ "$EUID" -ne 0 ]]; then
+#	echo "Please run with sudo :)"
+#	exit 0
+#fi
+
+user_home=$HOME
+if [[ "$user_home" == *"root"* ]]; then
+	echo "You are currently root user!! Please close this terminal and run in a new terminal"
 	exit 0
+else
+	echo "Home directory: $user_home"
 fi
 
 #======= Get Operating System Info ===============
@@ -143,10 +152,10 @@ echo "Finding Operating System"
 for OS_NAME_IND in "${!OSArray[@]}"
 do
 	if [[ "$os_dist" == *"${OSArray[OS_NAME_IND]}"* ]]; then
-		echo "You have ${OSArray[OS_NAME_IND]}"
+		echo "You have ${OSName[OS_NAME_IND]}"
 		os_name=$OS_NAME_IND
 	else
-		echo "  You do not have ${OSArray[OS_NAME_IND]}"
+		echo "  You do not have ${OSName[OS_NAME_IND]}"
 	fi
 done
 
@@ -154,6 +163,10 @@ if [[ $os_name -lt 0 ]]; then
 	echo "COULD NOT DETERMINE OS --> exiting"
 	exit 0
 fi
+
+echo "Beginning of Install Phase: Enter credentials to allow installation of missing dependencies"
+echo " ** Depending on install time, you make have to enter credentials again later**"
+sudo -v
 
 #======= Check GCC Existence ===============
 gcc_out=$(gcc --version)
@@ -246,10 +259,6 @@ for PLUGIN in "${PluginTools[@]}"; do
 	fi
 done
 
-if [[ $os_name -eq 3 ]]; then
-	HOME=/home/pi
-fi
-
 
 #======= Make Folder for all code and download =========
 code_folder="/gstreamer_client"
@@ -258,36 +267,36 @@ g_client_folder="/g_client"
 g_client_code="/Gstreamer_Applications/gstreamer_client.c"
 
 echo ""
-echo "Making Overall Folder for code: ${HOME}${code_folder}"
-mkdir ${HOME}${code_folder}
+echo "Making Overall Folder for code: ${user_home}${code_folder}"
+mkdir ${user_home}${code_folder}
 
-echo "  Making G729 Plugin Folder: ${HOME}${code_folder}${g729_plugin_folder}"
-mkdir ${HOME}${code_folder}${g729_plugin_folder}
+echo "  Making G729 Plugin Folder: ${user_home}${code_folder}${g729_plugin_folder}"
+mkdir ${user_home}${code_folder}${g729_plugin_folder}
 
-echo "  Cloning G729 Plugin Code to ${HOME}${code_folder}${g729_plugin_folder}"
+echo "  Cloning G729 Plugin Code to ${user_home}${code_folder}${g729_plugin_folder}"
 echo ""
 echo " ================ G729 Plugin Clone ================== "
-git clone --recursive https://github.com/sdroege/gladstone.git ${HOME}${code_folder}${g729_plugin_folder}
+git clone --recursive https://github.com/sdroege/gladstone.git ${user_home}${code_folder}${g729_plugin_folder}
 echo " ================ G729 Plugin Clone ================== "
 
 echo ""
-echo "  Making Temp Gstreamer Client directory ${HOME}${code_folder}${g_client_folder}"
-mkdir ${HOME}${code_folder}${g_client_folder}
+echo "  Making Temp Gstreamer Client directory ${user_home}${code_folder}${g_client_folder}"
+mkdir ${user_home}${code_folder}${g_client_folder}
 
-echo "  Cloning Gstreamer Client Code to ${HOME}${code_folder}${g_client_folder}"
+echo "  Cloning Gstreamer Client Code to ${user_home}${code_folder}${g_client_folder}"
 echo ""
 echo " ================ Gstreamer Client Clone ================== "
-git clone --recursive https://github.com/rankner7/NASA_EV3_Audio_Streaming.git ${HOME}${code_folder}${g_client_folder}
+git clone --recursive https://github.com/rankner7/NASA_EV3_Audio_Streaming.git ${user_home}${code_folder}${g_client_folder}
 echo " ================ Gstreamer Client Clone ================== "
 
 echo ""
-echo "  Extracting only gstreamer_client.c to ${HOME}${code_folder}"
-echo "  Removing Temp Folder: ${HOME}${code_folder}${g_client_folder}"
-mv ${HOME}${code_folder}${g_client_folder}${g_client_code} ${HOME}${code_folder}
-rm -r ${HOME}${code_folder}${g_client_folder}
+echo "  Extracting only gstreamer_client.c to ${user_home}${code_folder}"
+echo "  Removing Temp Folder: ${user_home}${code_folder}${g_client_folder}"
+mv ${user_home}${code_folder}${g_client_folder}${g_client_code} ${user_home}${code_folder}
+sudo rm -r ${user_home}${code_folder}${g_client_folder}
 
 #======== Install G729 Plugin ==============
-cd ${HOME}${code_folder}${g729_plugin_folder}
+cd ${user_home}${code_folder}${g729_plugin_folder}
 echo ""
 echo "Installing G729 Plugin"
 
@@ -295,24 +304,23 @@ config_file="/configure"
 autogen_file="/autogen.sh"
 
 echo "================= Running autogen.sh ==============================="
-.${autogen_file}
+sudo .${autogen_file}
 
 echo ""
 echo "=========== Running configure with ITU source code download ==========="
 if [[ ${#gst_both} -eq 0 ]]; then
-	.${config_file} --enable-refcode-download GST_LIBS="${gst_base};${gst_plugins_base}"
+	sudo .${config_file} --enable-refcode-download GST_LIBS="${gst_base};${gst_plugins_base}"
 else
-	.${config_file} --enable-refcode-download  GST_LIBS=${gst_both}
+	sudo .${config_file} --enable-refcode-download  GST_LIBS=${gst_both}
 fi
-.${config_file} --enable-refcode-download 
 
 echo ""
 echo "=================== Running make ==============================="
-make
+sudo make
 
 echo ""
 echo "=================== Running make install ==============================="
-install_res=$(make install)
+install_res=$(sudo make install)
 cut1=${install_res#*----------------------------------------------------------------------}
 cut2=${cut1%If*}
 plugin_install_loc=${cut2#*in:}
@@ -327,7 +335,7 @@ if [[ ${#find_loc} -gt 0 ]]; then
 	echo "Found the Plugin Directory! --> $plugin_install_loc"
 else
 	echo "Could Not Find Plugin Directory --> Removing Folder and Exiting"
-	rm -r ${HOME}${code_folder}
+	sudo rm -r ${user_home}${code_folder}
 	exit 0
 fi
 
@@ -344,12 +352,12 @@ if [[ ${#gst_out} -gt 0 ]]; then
 	echo "Plugin linked properly!"
 else
 	echo "Error linking and finding plugin :/--> Removing Folder and Exiting"
-	rm -r ${HOME}${code_folder}
+	sudo rm -r ${user_home}${code_folder}
 	exit 0
 fi
 
 echo "================ Compiling Gstreamer Client ================"
-cd ${HOME}${code_folder}
+cd ${user_home}${code_folder}
 complile_out=$(gcc gstreamer_client.c -o G_CLIENT -lpthread $(pkg-config --cflags --libs gstreamer-1.0))
 if [[ ${#compile_out} -gt 0 ]]; then
 	echo "======================= Compilation Output Begin ==============="
@@ -359,7 +367,7 @@ if [[ ${#compile_out} -gt 0 ]]; then
 	echo "Diagnose above output and adjust accordingly"
 else
 	echo "COMPILATION SUCCEDED!"
-	echo "To use just type ./G_CLIENT from ${HOME}${code_folder}"
+	echo "To use just type ./G_CLIENT from ${user_home}${code_folder}"
 fi
 
 
