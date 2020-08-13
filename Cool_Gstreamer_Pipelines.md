@@ -29,7 +29,7 @@ export STREAM_CAPS="application/x-rtp,media=(string)audio,clock-rate=(int)8000,e
 
 ### Modifying SSRC and Frame Count
 
-If you're unfamiliar with RTP, take a look at the (RTP RFC)[https://tools.ietf.org/html/rfc3550]
+If you're unfamiliar with RTP, take a look at the [RTP RFC](https://tools.ietf.org/html/rfc3550)
 
 G.729 frames are conventionally 10 ms windows. With 8 KHz 16 bit signed pcm raw audio and a compression ratio of 16, this leads to 10 Bytes of compressed audio per frame. The RTP header with no CSRCs (contributing sources), should be 12 Bytes long.
 
